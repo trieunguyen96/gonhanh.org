@@ -8,9 +8,9 @@ fi
 
 # Source .env file if exists (for Apple Developer credentials)
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-if [ -f "$SCRIPT_DIR/../.env" ]; then
+if [ -f "$SCRIPT_DIR/../../scripts/.env" ]; then
     set -a
-    source "$SCRIPT_DIR/../.env"
+    source "$SCRIPT_DIR/../../scripts/.env"
     set +a
 fi
 
@@ -136,7 +136,8 @@ if [ -n "$CUSTOM_VERSION" ]; then
     VERSION="$CUSTOM_VERSION"
     echo "Version (custom): $VERSION"
 else
-    GIT_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+    # Use latest stable tag for local builds; CI sets its own version
+    GIT_TAG=$(git tag --sort=-v:refname | grep -v '-' | head -1 2>/dev/null || echo "v0.0.0")
     VERSION=${GIT_TAG#v}  # Remove 'v' prefix
     echo "Version (git tag): $VERSION"
 fi
@@ -175,7 +176,7 @@ if [ "$SIGN_APP" = true ]; then
 fi
 
 # Build macOS app with xcodebuild
-cd "$(dirname "$0")/../platforms/macos"
+cd "$(dirname "$0")/../../platforms/macos"
 
 if [ -d "GoNhanh.xcodeproj" ]; then
     echo "Building with Xcode..."
@@ -221,16 +222,42 @@ if [ -d "GoNhanh.xcodeproj" ]; then
             build/Release/GoNhanh.app
         echo "Signed with Developer ID: $APPLE_SIGNING_IDENTITY"
     else
-        codesign --force --deep --sign - \
-            --entitlements GoNhanh.entitlements \
-            build/Release/GoNhanh.app
-        echo "Signed with ad-hoc identity (development only)"
+        # Use Developer ID cert if available, fallback to ad-hoc
+        DEV_CERT=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)".*/\1/' || echo "")
+        if [ -n "$DEV_CERT" ]; then
+            codesign --force --deep --sign "$DEV_CERT" \
+                --entitlements GoNhanh.entitlements \
+                build/Release/GoNhanh.app
+            echo "Signed with: $DEV_CERT"
+        else
+            codesign --force --deep --sign - \
+                --entitlements GoNhanh.entitlements \
+                build/Release/GoNhanh.app
+            echo "Signed with ad-hoc identity (development only)"
+        fi
     fi
 
     # Verify signature
     echo "Verifying signature..."
     codesign -vvv --deep --strict build/Release/GoNhanh.app
     echo "Signature verified!"
+
+    # Grant Accessibility permission (update TCC database with new csreq)
+    BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" build/Release/GoNhanh.app/Contents/Info.plist)
+    TCC_DB="/Library/Application Support/com.apple.TCC/TCC.db"
+    NEW_CSREQ=$(codesign -d -r- build/Release/GoNhanh.app 2>&1 | awk -F ' => ' '/designated/{print $2}' | csreq -r- -b /dev/stdout | xxd -p | tr -d '\n' | tr '[:lower:]' '[:upper:]')
+    OLD_CSREQ=$(sqlite3 "$TCC_DB" "SELECT hex(csreq) FROM access WHERE service='kTCCServiceAccessibility' AND client='$BUNDLE_ID'" 2>/dev/null || echo "")
+    if [ "$NEW_CSREQ" != "$OLD_CSREQ" ]; then
+        echo "Updating Accessibility permission..."
+        sudo sqlite3 "$TCC_DB" "
+            DELETE FROM access WHERE service='kTCCServiceAccessibility' AND client='$BUNDLE_ID';
+            INSERT INTO access (service, client, client_type, auth_value, auth_reason, auth_version, csreq, indirect_object_identifier_type, indirect_object_identifier, flags, last_modified)
+            VALUES ('kTCCServiceAccessibility', '$BUNDLE_ID', 0, 2, 4, 1, X'$NEW_CSREQ', 0, 'UNUSED', 0, CAST(strftime('%s','now') AS INTEGER));
+        "
+        echo "✅ Accessibility granted"
+    else
+        echo "✅ Accessibility: already granted"
+    fi
 
     # Notarize if requested
     if [ "$NOTARIZE_APP" = true ]; then

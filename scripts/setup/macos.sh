@@ -30,15 +30,23 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     fi
 fi
 
+# Install swiftformat
+if ! command -v swiftformat &> /dev/null; then
+    echo "📦 Installing swiftformat..."
+    brew install swiftformat
+else
+    echo "✅ swiftformat found: $(swiftformat --version)"
+fi
+
 # Make scripts executable
-chmod +x scripts/*.sh
+chmod +x scripts/**/*.sh
 
 echo ""
 echo "✅ Setup complete!"
 echo ""
 echo "Next steps:"
-echo "  1. Build Rust core:  ./scripts/build-core.sh"
+echo "  1. Build Rust core:  ./scripts/build/core.sh"
 echo "  2. Create Xcode project in platforms/macos/"
-echo "  3. Build macOS app:  ./scripts/build-macos.sh"
+echo "  3. Build macOS app:  ./scripts/build/macos.sh"
 echo ""
 echo "Documentation: docs/development.md"

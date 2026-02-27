@@ -49,9 +49,24 @@ fi
 COMMIT_COUNT=$(echo "$COMMITS" | wc -l | tr -d ' ')
 info "📊 Found $COMMIT_COUNT commits"
 
-# Format commits for readability
+# Resolve GitHub usernames for each commit (PR → commit hash fallback)
+REPO="khaphanspace/gonhanh.org"
 FORMATTED_COMMITS=$(echo "$COMMITS" | while IFS='|' read -r msg hash author; do
-    echo "- $msg ($hash) by $author"
+    login=""
+    # Try 1: PR author (most accurate for external contributors)
+    pr_num=$(echo "$msg" | grep -oE '\(#([0-9]+)\)' | tail -1 | grep -oE '[0-9]+' || true)
+    if [ -n "$pr_num" ]; then
+        login=$(gh api "repos/$REPO/pulls/$pr_num" --jq '.user.login' 2>/dev/null) || login=""
+    fi
+    # Try 2: Commit hash → GitHub author (works for all commits)
+    if [ -z "$login" ]; then
+        login=$(gh api "repos/$REPO/commits/$hash" --jq '.author.login' 2>/dev/null) || login=""
+    fi
+    if [ -n "$login" ]; then
+        echo "- $msg bởi @$login"
+    else
+        echo "- $msg by $author"
+    fi
 done)
 
 # Get diff summary
@@ -69,22 +84,24 @@ OUTPUT FORMAT - Follow this EXACTLY:
 ### ✨ New Features
 - Feature description here
 
-### 🐛 Bug Fixes
-- Fix description here
-
 ### ⚡ Improvements
 - Improvement description here
+
+### 🐛 Bug Fixes
+- Fix description here
 
 **Full Changelog**: https://github.com/khaphanspace/gonhanh.org/compare/$FROM_REF...$VERSION
 
 RULES:
 1. Output ONLY markdown, start with '## What's Changed'
-2. Group by type: Features (new), Fixes (bugs), Improvements (refactor/perf/docs)
+2. Group by type IN THIS ORDER: Features (new), Improvements (refactor/perf/docs), Fixes (bugs)
 3. Skip empty sections - only include sections with actual changes
 4. Each item: 1 line, user-facing impact, Vietnamese preferred (tech terms in English OK)
-5. Platform prefix if applicable: (macOS), (Linux)
+5. Platform prefix if applicable: (macOS), (linux). Always lowercase except macOS.
 6. Combine related commits into single items
 7. Ignore: release commits, version bumps, trivial changes
+8. IMPORTANT: If a commit has a PR reference like (#NNN), ALWAYS keep it at the END of the bullet line in exact format (#NNN). Never change to (Issue #NNN) or drop it.
+9. CRITICAL: EVERY bullet line MUST end with 'bởi @username'. This is taken from the commit data - preserve it exactly. When combining commits, use the 'bởi @username' from the most relevant commit. NEVER omit 'bởi @...'.
 
 COMMITS ($COMMIT_COUNT):
 $FORMATTED_COMMITS
@@ -99,6 +116,9 @@ info "🤖 Calling Claude Code..."
 
 # Call Claude Code with strict settings
 AI_OUTPUT=$(claude -p --output-format text --dangerously-skip-permissions "$PROMPT" 2>/dev/null) || error "Claude Code failed to execute"
+
+# Strip leading/trailing blank lines
+AI_OUTPUT=$(echo "$AI_OUTPUT" | sed '/./,$!d' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}')
 
 # Validate output quality - STRICT validation
 validate_release_notes() {

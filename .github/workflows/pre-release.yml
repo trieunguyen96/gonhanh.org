@@ -1,7 +1,7 @@
 name: Pre-release Build
 
 on:
-  # Manual trigger with platform selection
+  # Manual trigger (UI) - select platform
   workflow_dispatch:
     inputs:
       platform:
@@ -19,8 +19,9 @@ on:
         required: false
         default: false
         type: boolean
-  # Auto build for PRs
+  # Auto trigger on merged PR to main (owner only)
   pull_request:
+    types: [closed]
     branches: [main]
     paths:
       - 'core/**'
@@ -29,17 +30,19 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
+  pull-requests: read
 
 env:
-  # Apple Developer Configuration (only used if sign=true or for release builds)
+  # Apple Developer Configuration (only used if sign=true)
   APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
   APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
 
 jobs:
   build-macos:
-    # For PR: always run. For manual: check platform input
-    if: ${{ github.event_name == 'pull_request' || inputs.platform == 'macos' || inputs.platform == 'all' }}
+    # Manual: check platform input | PR merged: owner only, build macos
+    if: |
+      (github.event_name == 'workflow_dispatch' && (inputs.platform == 'macos' || inputs.platform == 'all')) ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true && github.event.pull_request.user.login == github.repository_owner)
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -120,25 +123,34 @@ jobs:
       # ============================================================
       # PACKAGE (Set version BEFORE signing)
       # ============================================================
-      - name: Get version from latest tag
+      - name: Get version from latest release tag
         id: version
         run: |
           git fetch --tags
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v1.0.0")
+          # Find latest RELEASE tag (exclude pre-release tags with "-")
+          LATEST_TAG=$(git tag --sort=-v:refname | grep -v '-' | head -1)
+          LATEST_TAG="${LATEST_TAG:-v1.0.0}"
           BASE_VERSION="${LATEST_TAG#v}"
-          SHORT_SHA="${GITHUB_SHA:0:7}"
+          # Bump patch version by 1 so pre-release is HIGHER than current release
+          MAJOR=$(echo "$BASE_VERSION" | cut -d. -f1)
+          MINOR=$(echo "$BASE_VERSION" | cut -d. -f2)
+          PATCH=$(echo "$BASE_VERSION" | cut -d. -f3)
+          NEXT_PATCH=$((PATCH + 1))
           BUILD_NUM="${GITHUB_RUN_NUMBER}"
-          VERSION="${BASE_VERSION}-pre.${BUILD_NUM}.${SHORT_SHA}"
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Pre-release version: $VERSION (build #${BUILD_NUM})"
+          # Display version (human-readable, shown in UI)
+          DISPLAY_VERSION="${MAJOR}.${MINOR}.${NEXT_PATCH}-pre.${BUILD_NUM}"
+          # Bundle version (pure numeric for comparison)
+          BUNDLE_VERSION="${MAJOR}.${MINOR}.${NEXT_PATCH}.${BUILD_NUM}"
+          echo "version=$DISPLAY_VERSION" >> $GITHUB_OUTPUT
+          echo "bundle_version=$BUNDLE_VERSION" >> $GITHUB_OUTPUT
+          echo "Pre-release: $DISPLAY_VERSION (bundle: $BUNDLE_VERSION, base: $LATEST_TAG)"
 
       - name: Set version in app
         run: |
           cd platforms/macos
           APP="build/Build/Products/Release/GoNhanh.app"
-          V="${{ steps.version.outputs.version }}"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $V" "$APP/Contents/Info.plist"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $V" "$APP/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${{ steps.version.outputs.version }}" "$APP/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ steps.version.outputs.bundle_version }}" "$APP/Contents/Info.plist"
 
       # ============================================================
       # CODE SIGNING (After version is set)
@@ -177,7 +189,7 @@ jobs:
           V="${{ steps.version.outputs.version }}"
 
           # Create DMG (version already set, app already signed)
-          ../../scripts/create-dmg.sh "$APP" || {
+          ../../scripts/release/dmg.sh "$APP" || {
             # Fallback: simple DMG if script fails
             hdiutil create -volname "GoNhanh" -srcfolder "$APP" -ov -format UDZO "build/GoNhanh-${V}.dmg"
           }
@@ -189,39 +201,22 @@ jobs:
           path: platforms/macos/build/*.dmg
           retention-days: 14
 
-      - name: Comment on PR with artifact link
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+      - name: Create GitHub Pre-release
         env:
-          VERSION: ${{ steps.version.outputs.version }}
-          COMMIT_SHA: ${{ github.sha }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          RUN_ID: ${{ github.run_id }}
-        with:
-          script: |
-            const shortSha = process.env.COMMIT_SHA.substring(0, 7);
-            const version = process.env.VERSION;
-            const prNumber = process.env.PR_NUMBER;
-            const runId = process.env.RUN_ID;
-            const artifactUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}`;
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd platforms/macos
+          V="${{ steps.version.outputs.version }}"
+          TAG_NAME="v${V}"
+          DMG_FILE=$(ls build/*.dmg | head -1)
 
-            const body = [
-              '## macOS Build Ready',
-              '',
-              '| Commit | Version | Download |',
-              '|--------|---------|----------|',
-              `| \`${shortSha}\` | \`${version}\` | [**GoNhanh-${version}-macOS.zip**](${artifactUrl}#artifacts) |`,
-              '',
-              `> Build for commit ${process.env.COMMIT_SHA}`,
-              `> Artifact expires in 14 days`
-            ].join('\n');
+          gh release create "$TAG_NAME" \
+            --title "GoNhanh $V (Pre-release)" \
+            --notes "Pre-release build from CI." \
+            --prerelease \
+            "$DMG_FILE"
 
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: parseInt(prNumber),
-              body: body
-            });
+          echo "Created pre-release: $TAG_NAME"
 
       # ============================================================
       # CLEANUP
@@ -232,7 +227,7 @@ jobs:
           security delete-keychain $RUNNER_TEMP/app-signing.keychain-db || true
 
   build-linux:
-    # Only for manual trigger (not PR) - Linux build is optional
+    # Manual trigger only (no auto PR build for Linux)
     if: ${{ github.event_name == 'workflow_dispatch' && (inputs.platform == 'linux' || inputs.platform == 'all') }}
     runs-on: ubuntu-latest
     steps:
@@ -266,17 +261,23 @@ jobs:
           cmake .. -DCMAKE_BUILD_TYPE=Release
           make -j$(nproc)
 
-      - name: Get version from latest tag
+      - name: Get version from latest release tag
         id: version
         run: |
           git fetch --tags
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v1.0.0")
+          # Find latest RELEASE tag (exclude pre-release tags with "-")
+          LATEST_TAG=$(git tag --sort=-v:refname | grep -v '-' | head -1)
+          LATEST_TAG="${LATEST_TAG:-v1.0.0}"
           BASE_VERSION="${LATEST_TAG#v}"
-          SHORT_SHA="${GITHUB_SHA:0:7}"
+          # Bump patch version by 1 so pre-release is HIGHER than current release
+          MAJOR=$(echo "$BASE_VERSION" | cut -d. -f1)
+          MINOR=$(echo "$BASE_VERSION" | cut -d. -f2)
+          PATCH=$(echo "$BASE_VERSION" | cut -d. -f3)
+          NEXT_PATCH=$((PATCH + 1))
           BUILD_NUM="${GITHUB_RUN_NUMBER}"
-          VERSION="${BASE_VERSION}-pre.${BUILD_NUM}.${SHORT_SHA}"
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Pre-release version: $VERSION (build #${BUILD_NUM})"
+          DISPLAY_VERSION="${MAJOR}.${MINOR}.${NEXT_PATCH}-pre.${BUILD_NUM}"
+          echo "version=$DISPLAY_VERSION" >> $GITHUB_OUTPUT
+          echo "Pre-release: $DISPLAY_VERSION (base: $LATEST_TAG)"
 
       - name: Package
         run: |

@@ -8,6 +8,7 @@
 
 pub mod chars;
 pub mod constants;
+pub mod dictionary;
 pub mod english_dict;
 pub mod keys;
 pub mod telex_doubles;
