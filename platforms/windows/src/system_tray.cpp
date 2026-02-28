@@ -19,12 +19,15 @@ bool SystemTray::Create(HWND hwnd) {
 
     hwnd_ = hwnd;
 
-    // Initialize NOTIFYICONDATAW
+    // Initialize NOTIFYICONDATAW with stable GUID
+    // Using GUID prevents duplicate tray entries when exe path changes between builds
     nid_.cbSize = sizeof(NOTIFYICONDATAW);
     nid_.hWnd = hwnd;
     nid_.uID = 1;
-    nid_.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
+    nid_.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP | NIF_GUID;
     nid_.uCallbackMessage = WM_TRAYICON;
+    // {7A1B3C4D-5E6F-4A8B-9C0D-1E2F3A4B5C6D} - stable GUID for GoNhanh tray icon
+    nid_.guidItem = { 0x7A1B3C4D, 0x5E6F, 0x4A8B, { 0x9C, 0x0D, 0x1E, 0x2F, 0x3A, 0x4B, 0x5C, 0x6D } };
 
     // Load small icon for system tray
     int size = GetSystemMetrics(SM_CXSMICON);
@@ -34,7 +37,15 @@ bool SystemTray::Create(HWND hwnd) {
     // Set tooltip
     wcscpy_s(nid_.szTip, L"G\x00F5 Nhanh - B\x1ED9 g\x00F5 ti\x1EBFng Vi\x1EC7t");
 
-    // Add to system tray
+    // Add to system tray (fallback without GUID if it fails)
+    if (Shell_NotifyIconW(NIM_ADD, &nid_)) {
+        created_ = true;
+        UpdateIcon();
+        return true;
+    }
+    // Fallback: some systems reject NIF_GUID, retry without it
+    nid_.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
+    nid_.guidItem = {};
     if (Shell_NotifyIconW(NIM_ADD, &nid_)) {
         created_ = true;
         UpdateIcon();

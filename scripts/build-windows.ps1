@@ -5,6 +5,7 @@ param(
     [switch]$Clean,
     [switch]$Debug,
     [switch]$Package,
+    [switch]$Run,
     [switch]$Help
 )
 
@@ -17,12 +18,14 @@ if ($Help) {
     Write-Host "  -Clean    Remove existing build artifacts before building"
     Write-Host "  -Debug    Build with debug console enabled"
     Write-Host "  -Package  Create ZIP package for distribution"
+    Write-Host "  -Run      Kill running app and start new build after completion"
     Write-Host "  -Help     Show this help message"
     exit 0
 }
 
 # Get project root - when run via Make, use current directory
-$ProjectRoot = (Get-Location).Path
+# Use ProviderPath to strip PowerShell provider prefix on UNC paths
+$ProjectRoot = (Get-Location).ProviderPath
 if ((Split-Path -Leaf $ProjectRoot) -eq "scripts") {
     $ProjectRoot = Split-Path -Parent $ProjectRoot
 }
@@ -75,14 +78,31 @@ if (-not $cmakePath) {
     exit 1
 }
 
-# Use local drive for build to avoid network drive issues
-$IsNetworkDrive = $ProjectRoot -match "^\\\\|^C:\\Mac\\Home"
+# Mirror source to local drive if on UNC/network path (CMD cannot cd into UNC paths)
+$IsNetworkDrive = $ProjectRoot -match "^\\\\|^//|^C:\\Mac\\Home"
 if ($IsNetworkDrive) {
-    $LocalBuildDir = "$env:LOCALAPPDATA\gonhanh-build\windows"
-    Write-Host "Using local build dir: $LocalBuildDir"
+    $LocalRoot = "$env:LOCALAPPDATA\gonhanh-build"
+    $LocalBuildDir = "$LocalRoot\build"
+    Write-Host "Network drive detected, mirroring source to local..."
+    Write-Host "  Local: $LocalRoot"
     Write-Host ""
+
+    # Sync core/ and platforms/windows/ to local (only changed files)
+    $mirrorDirs = @(
+        @{ Src = "$ProjectRoot\core"; Dst = "$LocalRoot\core" },
+        @{ Src = "$ProjectRoot\platforms\windows"; Dst = "$LocalRoot\platforms\windows" }
+    )
+    foreach ($d in $mirrorDirs) {
+        if (-not (Test-Path $d.Dst)) {
+            New-Item -ItemType Directory -Path $d.Dst -Force | Out-Null
+        }
+        robocopy $d.Src $d.Dst /MIR /NJH /NJS /NP /NFL /NDL /XD build publish .git target | Out-Null
+    }
+
+    $SourceDir = "$LocalRoot\platforms\windows"
 } else {
     $LocalBuildDir = $BuildDir
+    $SourceDir = $WindowsDir
 }
 
 # Configure CMake
@@ -92,7 +112,7 @@ if (-not (Test-Path $LocalBuildDir)) {
 }
 
 $cmakeArgs = @(
-    "-S", $WindowsDir,
+    "-S", $SourceDir,
     "-B", $LocalBuildDir,
     "-G", "Visual Studio 17 2022",
     "-A", "x64"
@@ -137,5 +157,31 @@ if ($Package) {
     if (Test-Path "$PublishDir\GoNhanh.exe") {
         Compress-Archive -Path "$PublishDir\GoNhanh.exe" -DestinationPath $ZipPath -Force
         Write-Host "Package: platforms/windows/$ZipName"
+    }
+}
+
+# Run app after build if -Run specified
+if ($Run) {
+    Write-Host ""
+    Write-Host "Restarting GoNhanh..."
+
+    # Kill running process (try both case variations)
+    $procs = Get-Process -Name "gonhanh","GoNhanh" -ErrorAction SilentlyContinue
+    if ($procs) {
+        Write-Host "  Stopping running instance..."
+        $procs | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 800
+    }
+
+    # Start new instance
+    $ExePath = "$PublishDir\GoNhanh.exe"
+    Write-Host "  Looking for: $ExePath"
+    if (Test-Path $ExePath) {
+        Write-Host "  Starting new instance..."
+        Start-Process -FilePath $ExePath -WorkingDirectory $PublishDir
+        Write-Host "  Done!"
+    } else {
+        Write-Host "  Error: GoNhanh.exe not found"
+        Write-Host "  Checked path: $ExePath"
     }
 }

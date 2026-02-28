@@ -1,6 +1,7 @@
 #pragma once
 #include <windows.h>
 #include <commctrl.h>
+#include <vector>
 
 namespace gonhanh {
 
@@ -26,6 +27,7 @@ private:
     // Painting
     void PaintWindow(HDC hdc);
     void PaintSidebar(HDC hdc);
+    void PaintContent(HDC hdc);
     void PaintCards(HDC hdc);
     void PaintCardContent(HDC hdc);
     void DrawSettingsRow(HDC hdc, int x, int y, int width, const wchar_t* title, const wchar_t* subtitle);
@@ -46,10 +48,21 @@ private:
     HWND toggleSound_ = nullptr;
     HWND toggleModernTone_ = nullptr;
     HWND toggleCapitalize_ = nullptr;
+    HWND toggleForeignConsonants_ = nullptr;
 
     // Other controls
     HWND cmbMethod_ = nullptr;
-    HWND btnShortcuts_ = nullptr;
+
+    // Custom painted section 2 position and click area
+    int section2Y_ = 0;
+    RECT shortcutsRowRect_ = {};
+
+    // Scrolling (content area only)
+    int scrollPos_ = 0;
+    int contentHeight_ = 0;
+    std::vector<HWND> contentControls_;  // Controls to scroll
+    void UpdateScrollInfo();
+    void ScrollContent(int newPos);
 
     // Card rectangles for painting
     RECT cards_[4] = {};

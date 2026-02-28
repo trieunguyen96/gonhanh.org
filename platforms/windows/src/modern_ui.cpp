@@ -1,5 +1,6 @@
 #include "modern_ui.h"
 #include <shlwapi.h>
+#include <cmath>
 
 #pragma comment(lib, "shlwapi.lib")
 
@@ -185,6 +186,150 @@ void DrawPngFromResource(HDC hdc, int resourceId, int x, int y, int width, int h
         g.DrawImage(image, x, y, width, height);
         delete image;
     }
+}
+
+// Draw horizontal divider line
+void DrawDivider(HDC hdc, int x, int y, int width, COLORREF color) {
+    Gdiplus::Graphics g(hdc);
+    g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+
+    Gdiplus::Pen pen(Gdiplus::Color(50, GetRValue(color), GetGValue(color), GetBValue(color)), 1.0f);
+    g.DrawLine(&pen, x, y, x + width, y);
+}
+
+// Draw gear icon (settings)
+void DrawGearIcon(HDC hdc, int x, int y, int size, COLORREF color) {
+    Gdiplus::Graphics g(hdc);
+    g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+
+    Gdiplus::Pen pen(Gdiplus::Color(GetRValue(color), GetGValue(color), GetBValue(color)), 1.5f);
+    Gdiplus::SolidBrush brush(Gdiplus::Color(GetRValue(color), GetGValue(color), GetBValue(color)));
+
+    float cx = x + size / 2.0f;
+    float cy = y + size / 2.0f;
+    float outerR = size * 0.45f;
+    float innerR = size * 0.25f;
+    float toothH = size * 0.12f;
+
+    // Draw center circle
+    g.DrawEllipse(&pen, cx - innerR, cy - innerR, innerR * 2, innerR * 2);
+
+    // Draw gear teeth (8 teeth)
+    int teeth = 8;
+    for (int i = 0; i < teeth; i++) {
+        float angle = (float)(i * 360 / teeth) * 3.14159f / 180.0f;
+        float angleNext = (float)((i + 0.4f) * 360 / teeth) * 3.14159f / 180.0f;
+
+        float x1 = cx + (outerR - toothH) * cosf(angle);
+        float y1 = cy + (outerR - toothH) * sinf(angle);
+        float x2 = cx + outerR * cosf(angle);
+        float y2 = cy + outerR * sinf(angle);
+
+        g.DrawLine(&pen, x1, y1, x2, y2);
+    }
+
+    // Draw outer circle
+    g.DrawEllipse(&pen, cx - outerR + toothH, cy - outerR + toothH,
+                  (outerR - toothH) * 2, (outerR - toothH) * 2);
+}
+
+// Draw bolt/lightning icon (about/info)
+void DrawBoltIcon(HDC hdc, int x, int y, int size, COLORREF color) {
+    Gdiplus::Graphics g(hdc);
+    g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+
+    Gdiplus::SolidBrush brush(Gdiplus::Color(GetRValue(color), GetGValue(color), GetBValue(color)));
+
+    // Lightning bolt shape
+    Gdiplus::PointF points[7];
+    float w = size * 0.5f;
+    float h = size * 0.9f;
+    float ox = x + size * 0.25f;
+    float oy = y + size * 0.05f;
+
+    points[0] = Gdiplus::PointF(ox + w * 0.6f, oy);           // top
+    points[1] = Gdiplus::PointF(ox, oy + h * 0.5f);           // left middle
+    points[2] = Gdiplus::PointF(ox + w * 0.35f, oy + h * 0.5f);
+    points[3] = Gdiplus::PointF(ox + w * 0.2f, oy + h);       // bottom
+    points[4] = Gdiplus::PointF(ox + w, oy + h * 0.45f);      // right middle
+    points[5] = Gdiplus::PointF(ox + w * 0.65f, oy + h * 0.45f);
+    points[6] = Gdiplus::PointF(ox + w * 0.6f, oy);           // back to top
+
+    g.FillPolygon(&brush, points, 7);
+}
+
+// Draw chevron right arrow
+void DrawChevronRight(HDC hdc, int x, int y, int size, COLORREF color) {
+    Gdiplus::Graphics g(hdc);
+    g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+
+    Gdiplus::Pen pen(Gdiplus::Color(GetRValue(color), GetGValue(color), GetBValue(color)), 1.5f);
+    pen.SetLineCap(Gdiplus::LineCapRound, Gdiplus::LineCapRound, Gdiplus::DashCapRound);
+
+    float pad = size * 0.3f;
+    float cx = x + size / 2.0f;
+    float cy = y + size / 2.0f;
+
+    // Draw > shape
+    g.DrawLine(&pen, cx - pad * 0.5f, cy - pad, cx + pad * 0.5f, cy);
+    g.DrawLine(&pen, cx + pad * 0.5f, cy, cx - pad * 0.5f, cy + pad);
+}
+
+// Draw checkmark inside circle (for "up to date" badge)
+void DrawCheckmarkCircle(HDC hdc, int x, int y, int size, COLORREF color) {
+    Gdiplus::Graphics g(hdc);
+    g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+
+    // Green filled circle
+    Gdiplus::SolidBrush circleBrush(Gdiplus::Color(34, 197, 94));  // Green-500
+    g.FillEllipse(&circleBrush, (float)x, (float)y, (float)size, (float)size);
+
+    // White checkmark
+    Gdiplus::Pen pen(Gdiplus::Color(255, 255, 255), 1.5f);
+    pen.SetLineCap(Gdiplus::LineCapRound, Gdiplus::LineCapRound, Gdiplus::DashCapRound);
+
+    float cx = x + size / 2.0f;
+    float cy = y + size / 2.0f;
+    float s = size * 0.25f;
+
+    // Checkmark path
+    g.DrawLine(&pen, cx - s, cy, cx - s * 0.3f, cy + s * 0.7f);
+    g.DrawLine(&pen, cx - s * 0.3f, cy + s * 0.7f, cx + s, cy - s * 0.5f);
+}
+
+// Draw keycap style button (like macOS keyboard shortcuts)
+void DrawKeycap(HDC hdc, int x, int y, const wchar_t* text, int fontSize, float dpi) {
+    const Theme& theme = GetTheme();
+
+    // Measure text width
+    HFONT hFont = CreateFontW(
+        -MulDiv(fontSize, GetDeviceCaps(hdc, LOGPIXELSY), 72),
+        0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI"
+    );
+
+    HFONT oldFont = (HFONT)SelectObject(hdc, hFont);
+    SIZE textSize;
+    GetTextExtentPoint32W(hdc, text, (int)wcslen(text), &textSize);
+    SelectObject(hdc, oldFont);
+    DeleteObject(hFont);
+
+    int padding = Scale(8, dpi);
+    int height = Scale(22, dpi);
+    int width = textSize.cx + padding * 2;
+    int radius = Scale(4, dpi);
+
+    // Keycap background (subtle gray)
+    COLORREF bgColor = IsDarkMode() ? RGB(60, 60, 60) : RGB(230, 230, 230);
+    COLORREF borderColor = IsDarkMode() ? RGB(80, 80, 80) : RGB(200, 200, 200);
+
+    RECT keycapRect = { x, y, x + width, y + height };
+    DrawRoundedRect(hdc, keycapRect, radius, bgColor, borderColor);
+
+    // Draw text centered
+    RECT textRect = { x, y, x + width, y + height };
+    DrawText(hdc, text, textRect, theme.textPrimary, fontSize, true, DT_CENTER | DT_VCENTER);
 }
 
 // Toggle switch window procedure

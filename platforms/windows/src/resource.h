@@ -1,5 +1,10 @@
 #pragma once
 
+// App version (updated by build scripts)
+#ifndef APP_VERSION_STRING
+#define APP_VERSION_STRING "1.0.112"
+#endif
+
 // Icons (IDI_APPICON=1 required for exe icon)
 #define IDI_APPICON         1
 #define IDI_TRAY_ICON       101
@@ -31,6 +36,7 @@
 #define IDC_BTN_SHORTCUTS   312
 #define IDC_HOTKEY          313
 #define IDC_BTN_APPLY       314
+#define IDC_CHK_FOREIGN     315
 
 // Shortcuts dialog
 #define IDC_SHORTCUTS_LIST  401

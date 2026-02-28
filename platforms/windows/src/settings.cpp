@@ -174,4 +174,15 @@ void Settings::ApplyToEngine() {
     }
 }
 
+std::pair<int, int> Settings::GetShortcutsCount() const {
+    int enabled = 0;
+    int total = static_cast<int>(shortcuts.size());
+    for (const auto& shortcut : shortcuts) {
+        if (shortcut.enabled) {
+            enabled++;
+        }
+    }
+    return {enabled, total};
+}
+
 } // namespace gonhanh

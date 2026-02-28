@@ -45,6 +45,7 @@ if(ENABLE_DEBUG_CONSOLE)
         src/utils.cpp
         src/debug_console.cpp
         src/modern_ui.cpp
+        src/update_checker.cpp
         resources/resources.rc
     )
     target_compile_definitions(gonhanh PRIVATE GONHANH_DEBUG_CONSOLE)
@@ -64,6 +65,7 @@ else()
         src/utils.cpp
         src/debug_console.cpp
         src/modern_ui.cpp
+        src/update_checker.cpp
         resources/resources.rc
     )
 endif()
@@ -74,7 +76,7 @@ target_link_libraries(gonhanh PRIVATE
     gonhanh_core
     ws2_32 userenv bcrypt advapi32
     user32 shell32 gdi32 comctl32 psapi
-    dwmapi gdiplus uxtheme
+    dwmapi gdiplus uxtheme winhttp
 )
 
 # Include directories

@@ -21,14 +21,15 @@ help:
 	@echo ""
 	@echo "Usage: make [target]"
 	@echo ""
-	@echo "\033[1;32mDev:\033[0m"
-	@echo "  test          Run Rust tests"
-	@echo "  format        Format code (Rust + Swift)"
-	@echo "  lint          Check lint (clippy + swiftformat)"
-	@echo "  build         Build + auto-open app"
-	@echo "  build-linux   Build Linux Fcitx5"
-	@echo "  build-windows Build Windows app"
-	@echo "  clean         Clean artifacts"
+	@echo "\033[1;34mDev:\033[0m"
+	@echo "  \033[1;32mtest\033[0m          Run Rust tests"
+	@echo "  \033[1;32mformat\033[0m        Format code (Rust + Swift)"
+	@echo "  \033[1;32mlint\033[0m          Check lint (clippy + swiftformat)"
+	@echo "  \033[1;32mbuild\033[0m         Build + auto-open app"
+	@echo "  \033[1;32mbuild-linux\033[0m   Build Linux Fcitx5"
+	@echo "  \033[1;32mbuild-windows\033[0m Build Windows app"
+	@echo "  \033[1;32mrun-windows\033[0m   Build + restart Windows app"
+	@echo "  \033[1;32mclean\033[0m         Clean artifacts"
 	@echo ""
 	@echo "\033[1;32mDebug:\033[0m"
 	@echo "  watch       Tail debug log"
@@ -52,7 +53,7 @@ help:
 # Development
 # ============================================================================
 
-.PHONY: test format lint build build-linux build-windows clean all
+.PHONY: test format lint build build-linux build-windows run-windows clean all
 all: test build
 
 test:
@@ -80,6 +81,9 @@ build-linux: format
 
 build-windows:
 	@powershell -ExecutionPolicy Bypass -File scripts/build-windows.ps1
+
+run-windows:
+	@powershell -ExecutionPolicy Bypass -File scripts/build-windows.ps1 -Run
 
 clean: ## Clean build + settings
 	@cd core && cargo clean

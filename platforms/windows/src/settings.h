@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <utility>
 
 namespace gonhanh {
 
@@ -13,17 +14,17 @@ struct Shortcut {
 
 class Settings {
 public:
-    // Feature flags (match macOS)
+    // Feature flags (match macOS defaults)
     bool enabled = true;
     uint8_t method = 0;  // 0=Telex, 1=VNI
     bool skipWShortcut = false;
-    bool bracketShortcut = true;
-    bool escRestore = true;
+    bool bracketShortcut = false;
+    bool escRestore = false;
     bool autoStart = false;
-    bool perApp = false;
-    bool autoRestore = false;
-    bool sound = true;
-    bool modernTone = false;
+    bool perApp = true;
+    bool autoRestore = true;
+    bool sound = false;
+    bool modernTone = true;
     bool autoCapitalize = false;
     bool freeTone = false;
     bool allowForeignConsonants = false;
@@ -36,6 +37,9 @@ public:
     void Save();                    // Save to Registry
     void ApplyToEngine();           // Apply to Rust core via FFI
     static Settings& Instance();    // Singleton
+
+    // Helper: Get count of (enabled, total) shortcuts
+    std::pair<int, int> GetShortcutsCount() const;
 
 private:
     Settings() = default;

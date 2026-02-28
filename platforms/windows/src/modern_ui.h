@@ -62,6 +62,14 @@ void DrawRoundedRect(HDC hdc, const RECT& rect, int radius, COLORREF fill, COLOR
 void DrawText(HDC hdc, const wchar_t* text, const RECT& rect, COLORREF color, int fontSize, bool bold = false, UINT align = DT_LEFT | DT_VCENTER);
 void DrawToggleSwitch(HDC hdc, int x, int y, int width, int height, bool isOn, bool isHovered);
 void DrawPngFromResource(HDC hdc, int resourceId, int x, int y, int width, int height);
+void DrawDivider(HDC hdc, int x, int y, int width, COLORREF color);
+
+// Icon drawing (SF Symbol-like icons using GDI+)
+void DrawGearIcon(HDC hdc, int x, int y, int size, COLORREF color);
+void DrawBoltIcon(HDC hdc, int x, int y, int size, COLORREF color);
+void DrawChevronRight(HDC hdc, int x, int y, int size, COLORREF color);
+void DrawCheckmarkCircle(HDC hdc, int x, int y, int size, COLORREF color);
+void DrawKeycap(HDC hdc, int x, int y, const wchar_t* text, int fontSize, float dpi);
 
 // Toggle switch control
 #define TOGGLE_SWITCH_CLASS L"GoNhanhToggleSwitch"
