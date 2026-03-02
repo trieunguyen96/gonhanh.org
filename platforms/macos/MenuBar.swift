@@ -20,6 +20,7 @@ class MenuBarController: NSObject, NSWindowDelegate {
 
     private let appState = AppState.shared
     private var cancellables = Set<AnyCancellable>()
+    private var pendingRestart: DispatchWorkItem?
 
     override init() {
         super.init()
@@ -485,26 +486,38 @@ class MenuBarController: NSObject, NSWindowDelegate {
         NSApp.mainMenu = mainMenu
     }
 
+    // MARK: - Restart Management
+
+    func cancelPendingRestart() {
+        pendingRestart?.cancel()
+        pendingRestart = nil
+    }
+
     // MARK: - NSWindowDelegate
 
     func windowWillClose(_ notification: Notification) {
         guard let window = notification.object as? NSWindow,
               window === settingsWindow else { return }
+
         window.contentViewController = nil
         settingsWindow = nil
         NSApp.setActivationPolicy(.accessory)
+
         // Restart app to reclaim memory if enabled
-        // Skip restart if app is quitting (Cmd+Q or menu Thoát)
-        let isQuitting = (NSApp.delegate as? AppDelegate)?.isQuitting ?? false
-        guard !isQuitting,
-              AppState.shared.advancedMode,
+        // Use deferred restart: if app is quitting, applicationWillTerminate
+        // will cancel this before it runs
+        guard AppState.shared.advancedMode,
               AppState.shared.restartOnClose else { return }
-        // Terminate first, then relaunch via detached shell script after short delay
         let path = Bundle.main.bundleURL.path
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/bin/sh")
-        task.arguments = ["-c", "sleep 0.5 && open '\(path)'"]
-        try? task.run()
-        NSApp.terminate(nil)
+        let work = DispatchWorkItem { [weak self] in
+            guard self?.pendingRestart?.isCancelled == false else { return }
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/bin/sh")
+            task.arguments = ["-c", "sleep 0.5 && open '\(path)'"]
+            try? task.run()
+            NSApp.terminate(nil)
+        }
+        pendingRestart = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: work)
     }
 }

@@ -13,8 +13,6 @@ struct GoNhanhApp: App {
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     var menuBar: MenuBarController?
-    var isQuitting = false
-
     func applicationDidFinishLaunching(_: Notification) {
         // Register default settings before anything else
         registerDefaultSettings()
@@ -26,12 +24,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         InputSourceObserver.shared.start()
     }
 
-    func applicationShouldTerminate(_: NSApplication) -> NSApplication.TerminateReply {
-        isQuitting = true
-        return .terminateNow
-    }
-
     func applicationWillTerminate(_: Notification) {
+        // Cancel any pending restart-on-close (window may have closed during quit)
+        menuBar?.cancelPendingRestart()
         KeyboardHookManager.shared.stop()
         InputSourceObserver.shared.stop()
     }
