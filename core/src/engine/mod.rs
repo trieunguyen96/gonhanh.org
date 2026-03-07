@@ -807,6 +807,16 @@ impl Engine {
             let continuing_prefix = self.buf.is_empty() && !self.shortcut_prefix.is_empty();
 
             if at_true_start || continuing_prefix {
+                // Track additional break chars for backspace-after-break restore
+                // When user types multiple break chars after a word (e.g., "duow;;"),
+                // each break char should count as one "space" for restore purposes.
+                // Without this, only the first break increments sac, so "duow;;" + <<
+                // only needs 1 backspace to restore, and the 2nd backspace deletes
+                // from the restored buffer instead of undoing the 2nd break char.
+                if continuing_prefix && self.spaces_after_commit > 0 {
+                    self.spaces_after_commit = self.spaces_after_commit.saturating_add(1);
+                }
+
                 // Reset has_non_letter_prefix when starting a new shortcut at true start
                 // This ensures shortcuts like "->" work after DELETE cleared the buffer
                 if at_true_start {
@@ -882,9 +892,33 @@ impl Engine {
             }
 
             let restore_result = self.try_auto_restore_on_break();
+
+            // Push buffer to history before clearing (like SPACE handler)
+            // This enables backspace-after-break to restore the word
+            // Example: "ddu." → backspace → "đu" restored → "f" → "đù"
+            if !self.buf.is_empty() {
+                // If auto-restore happened, repopulate buffer with plain chars first
+                if restore_result.action != 0 {
+                    self.buf.clear();
+                    for &(key, caps, _) in &self.raw_input {
+                        self.buf.push(Char::new(key, caps));
+                    }
+                }
+                self.word_history.push(self.buf.clone());
+                self.spaces_after_commit = 1; // Break char counts as 1 space for restore
+            } else if self.spaces_after_commit > 0 && break_key_to_char(key, shift).is_some() {
+                // Buffer is empty but we recently committed a word (via space or break),
+                // AND this break key produces a visible character (punctuation like ; , .).
+                // Increment counter so backspace can undo all separators before restoring.
+                // Navigation keys (TAB, RETURN, arrows) still clear history since they
+                // indicate the user has moved away from the word.
+                self.spaces_after_commit = self.spaces_after_commit.saturating_add(1);
+            } else {
+                self.word_history.clear();
+                self.spaces_after_commit = 0;
+            }
+
             self.clear();
-            self.word_history.clear();
-            self.spaces_after_commit = 0;
 
             // Issue #130: After clearing buffer, store break char as potential shortcut prefix
             // This allows shortcuts like "->" to work after "abc->" (where "-" clears "abc")
@@ -907,6 +941,10 @@ impl Engine {
                         // Restore raw_input from buffer (for ESC restore to work)
                         self.restore_raw_input_from_buffer(&restored_buf);
                         self.buf = restored_buf;
+                        // Re-detect pending_u_horn_pos for "uơ" pattern at end of buffer
+                        // This state is lost on clear() but needed for correct horn placement
+                        // Example: "duơ" restored → type "c" → should become "dươc"
+                        self.re_detect_pending_u_horn();
                         // Mark that buffer was restored - if user types new letter,
                         // clear buffer first (they want fresh word, not append)
                         self.restored_pending_clear = true;
@@ -1000,6 +1038,16 @@ impl Engine {
             // If buffer still has chars, user might think they cleared everything
             // but actually didn't - let them start fresh on next letter input
             if self.buf.is_empty() {
+                // Chain-restore: when a restored buffer is fully deleted via continuous
+                // backspaces and word_history has more entries, enable restoring the
+                // previous word on the next backspace. The `restored_pending_clear` flag
+                // ensures this only happens in continuous backspace sequences — if the
+                // user typed any letter (which clears the flag), the chain breaks.
+                // Example: "dươc vẫn " → bs restores "vẫn" → bs×3 deletes it →
+                //          bs restores "dươc" → "j" applies mark → "được"
+                if self.restored_pending_clear && self.word_history.len > 0 {
+                    self.spaces_after_commit = 1;
+                }
                 self.restored_pending_clear = false;
                 // Restore pending_capitalize if user deleted the auto-capitalized letter
                 // This allows: ". B" → delete B → ". " → type again → auto-capitalizes
@@ -1032,7 +1080,7 @@ impl Engine {
                 // Vietnamese: clear only on consonant that's not a modifier
                 keys::is_consonant(key) && !is_modifier
             };
-            if should_clear {
+            if should_clear && self.pending_u_horn_pos.is_none() {
                 self.clear();
             }
             // Reset flags regardless - user is now actively typing
@@ -1575,8 +1623,12 @@ impl Engine {
         // 3. There must be a non-extending final (t, m, p) between them
         let has_circumflex_trigger_pattern = {
             let first_is_d = buffer_keys.first() == Some(&keys::D);
+            // After circumflex revert (e.g., "dât" → "data"), buffer has [D,A,T,A]
+            // which falsely matches D + V1 + C + V2 pattern. The duplicate vowels are
+            // from the revert, not intentional Vietnamese input, so skip detection.
+            let after_revert = self.had_circumflex_revert;
 
-            if first_is_d {
+            if first_is_d && !after_revert {
                 let vowel_positions: Vec<(usize, u16)> = buffer_keys
                     .iter()
                     .enumerate()
@@ -4355,6 +4407,26 @@ impl Engine {
         self.restored_pending_clear = false;
         self.restored_is_ascii = false;
         self.shortcut_prefix.clear();
+    }
+
+    /// Re-detect pending_u_horn_pos by scanning buffer for "u(no tone) + o(horn)" pattern
+    /// Used after restoring buffer from word history where this state was lost on clear()
+    fn re_detect_pending_u_horn(&mut self) {
+        self.pending_u_horn_pos = None;
+        let len = self.buf.len();
+        if len < 2 {
+            return;
+        }
+        // Check last two chars for u + ơ pattern (no final consonant after)
+        if let (Some(c1), Some(c2)) = (self.buf.get(len - 2), self.buf.get(len - 1)) {
+            if c1.key == keys::U
+                && c1.tone == tone::NONE
+                && c2.key == keys::O
+                && c2.tone == tone::HORN
+            {
+                self.pending_u_horn_pos = Some(len - 2);
+            }
+        }
     }
 
     /// Clear everything including word history

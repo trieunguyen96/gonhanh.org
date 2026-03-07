@@ -20,6 +20,7 @@ class MenuBarController: NSObject, NSWindowDelegate {
 
     private let appState = AppState.shared
     private var cancellables = Set<AnyCancellable>()
+    private var pendingRestart: DispatchWorkItem?
 
     override init() {
         super.init()
@@ -135,50 +136,65 @@ class MenuBarController: NSObject, NSWindowDelegate {
         updateMenu()
     }
 
+    private var statusSubtitle: String {
+        let mode = appState.isEnabled ? appState.currentMethod.name : "Đã tắt"
+        return "\(mode) · \(appState.toggleShortcut.displayParts.joined())"
+    }
+
+    /// Header: icon + bold title + subtitle on left, toggle switch on right
     private func createHeaderView() -> NSView {
-        let view = NSView(frame: NSRect(x: 0, y: 0, width: 220, height: 36))
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 0, height: 44))
+        container.autoresizingMask = [.width] // Stretch to menu width
 
-        // App icon
-        let iconView = NSImageView(frame: NSRect(x: 14, y: 4, width: 28, height: 28))
-        iconView.image = AppMetadata.logo
+        let iconView = NSImageView(image: AppMetadata.logo)
         iconView.imageScaling = .scaleProportionallyUpOrDown
-        view.addSubview(iconView)
 
-        // App name + status
-        let nameLabel = NSTextField(labelWithString: AppMetadata.name)
-        nameLabel.font = .systemFont(ofSize: 13, weight: .semibold)
-        nameLabel.frame = NSRect(x: 48, y: 16, width: 100, height: 16)
-        view.addSubview(nameLabel)
+        let titleLabel = NSTextField(labelWithString: AppMetadata.name)
+        titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
 
-        let statusText = appState.isEnabled ? appState.currentMethod.name : "Đã tắt"
-        let statusLabel = NSTextField(labelWithString: "\(statusText) · \(appState.toggleShortcut.displayParts.joined())")
-        statusLabel.font = .systemFont(ofSize: 11)
-        statusLabel.textColor = .secondaryLabelColor
-        statusLabel.frame = NSRect(x: 48, y: 2, width: 100, height: 14)
-        statusLabel.tag = 100
-        view.addSubview(statusLabel)
+        let subtitle = NSTextField(labelWithString: statusSubtitle)
+        subtitle.font = .systemFont(ofSize: 11)
+        subtitle.textColor = .secondaryLabelColor
+        subtitle.tag = 100 // For in-place updates
 
-        // Toggle switch using SwiftUI
-        let toggleView = NSHostingView(rootView:
-            Toggle("", isOn: Binding(
-                get: { [weak self] in self?.appState.isEnabled ?? true },
-                set: { [weak self] newValue in
-                    self?.appState.isEnabled = newValue
-                    SoundManager.shared.playToggleSound(enabled: newValue)
-                }
-            ))
-            .toggleStyle(.switch)
-            .labelsHidden()
-            .scaleEffect(0.8))
-        toggleView.frame = NSRect(x: 162, y: 4, width: 50, height: 28)
-        view.addSubview(toggleView)
+        let toggleView = NSHostingView(rootView: MenuBarToggle())
 
-        return view
+        for view in [iconView, titleLabel, subtitle, toggleView] as [NSView] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(view)
+        }
+
+        let padding: CGFloat = 14
+        NSLayoutConstraint.activate([
+            container.widthAnchor.constraint(greaterThanOrEqualToConstant: 250),
+            container.heightAnchor.constraint(equalToConstant: 44),
+            iconView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: padding),
+            iconView.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 32),
+            iconView.heightAnchor.constraint(equalToConstant: 32),
+            titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 8),
+            titleLabel.topAnchor.constraint(equalTo: container.topAnchor, constant: 5),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: toggleView.leadingAnchor, constant: -8),
+            subtitle.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
+            subtitle.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 1),
+            subtitle.trailingAnchor.constraint(lessThanOrEqualTo: toggleView.leadingAnchor, constant: -8),
+            toggleView.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -padding),
+            toggleView.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+        ])
+
+        return container
     }
 
     private func updateMenu() {
         guard let menu = statusItem.menu else { return }
-        menu.item(withTag: 1)?.view = createHeaderView()
+
+        // Update subtitle in-place (preserves toggle animation)
+        if let headerView = menu.item(withTag: 1)?.view,
+           let subtitle = headerView.viewWithTag(100) as? NSTextField
+        {
+            subtitle.stringValue = statusSubtitle
+        }
+
         menu.item(withTag: 10)?.state = appState.currentMethod == .telex ? .on : .off
         menu.item(withTag: 11)?.state = appState.currentMethod == .vni ? .on : .off
     }
@@ -461,12 +477,58 @@ class MenuBarController: NSObject, NSWindowDelegate {
         NSApp.mainMenu = mainMenu
     }
 
+    // MARK: - Restart Management
+
+    func cancelPendingRestart() {
+        pendingRestart?.cancel()
+        pendingRestart = nil
+    }
+
     // MARK: - NSWindowDelegate
 
     func windowWillClose(_ notification: Notification) {
         guard let window = notification.object as? NSWindow,
               window === settingsWindow else { return }
-        // Revert to background app when settings window closes
+
+        window.contentViewController = nil
+        settingsWindow = nil
         NSApp.setActivationPolicy(.accessory)
+
+        // Restart app to reclaim memory if enabled
+        // Use deferred restart: if app is quitting, applicationWillTerminate
+        // will cancel this before it runs
+        guard AppState.shared.advancedMode,
+              AppState.shared.restartOnClose else { return }
+        let path = Bundle.main.bundleURL.path
+        let work = DispatchWorkItem { [weak self] in
+            guard self?.pendingRestart?.isCancelled == false else { return }
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/bin/sh")
+            task.arguments = ["-c", "sleep 0.5 && open '\(path)'"]
+            try? task.run()
+            NSApp.terminate(nil)
+        }
+        pendingRestart = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: work)
+    }
+}
+
+// MARK: - Menu Bar Toggle (SwiftUI)
+
+/// Observes AppState so the toggle reflects the actual enabled state.
+/// Uses explicit Binding so sound only plays on direct toggle clicks (not keyboard shortcut or per-app restore).
+struct MenuBarToggle: View {
+    @ObservedObject private var appState = AppState.shared
+
+    var body: some View {
+        Toggle("", isOn: Binding(
+            get: { appState.isEnabled },
+            set: { newValue in
+                appState.isEnabled = newValue
+                SoundManager.shared.playToggleSound(enabled: newValue)
+            }
+        ))
+        .toggleStyle(.switch)
+        .labelsHidden()
     }
 }
