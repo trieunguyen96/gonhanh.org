@@ -70,6 +70,12 @@ Những người đã tin tưởng và ủng hộ dự án.
       </a>
     </td>
     <td align="center">
+      <a href="https://github.com/trananhhh">
+        <img src="https://avatars.githubusercontent.com/u/32959690?u=083cac7a5bd93a6b128bbd21242036b7f6beefc2&v=4" width="50" style="border-radius:50%"/><br/>
+        <b>trananhhh</b> 💜
+      </a>
+    </td>
+    <td align="center">
       <a href="https://github.com/hothanhly">
         <img src="https://avatars.githubusercontent.com/u/82742923?v=4" width="50" style="border-radius:50%"/><br/>
         <b>hothanhly</b> 💜
@@ -957,6 +963,6 @@ Những người đã báo lỗi, góp ý, và thảo luận giúp định hình
 
 ---
 
-*Được cập nhật tự động · Lần cuối: 14/03/2026*
+*Được cập nhật tự động · Lần cuối: 15/03/2026*
 
 </div>
