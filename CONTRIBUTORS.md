@@ -159,15 +159,15 @@ Những người đã báo lỗi, góp ý, và thảo luận giúp định hình
       </a>
     </td>
     <td align="center">
-      <a href="https://github.com/voquanghoa">
-        <img src="https://avatars.githubusercontent.com/u/10450325?v=4" width="50" style="border-radius:50%"/><br/>
-        <b>voquanghoa</b>
-      </a>
-    </td>
-    <td align="center">
       <a href="https://github.com/ducfilan">
         <img src="https://avatars.githubusercontent.com/u/1677524?v=4" width="50" style="border-radius:50%"/><br/>
         <b>ducfilan</b>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/voquanghoa">
+        <img src="https://avatars.githubusercontent.com/u/10450325?v=4" width="50" style="border-radius:50%"/><br/>
+        <b>voquanghoa</b>
       </a>
     </td>
     <td align="center">
