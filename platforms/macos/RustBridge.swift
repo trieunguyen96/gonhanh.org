@@ -752,8 +752,10 @@ class KeyboardHookManager {
 
         RustBridge.initialize()
 
-        // Listen for keyboard events only (mouse handled by NSEvent monitor)
+        // Listen for keyboard events (mouse handled by NSEvent monitor)
+        // Issue #307: keyUp needed to track Space hold state for bypass
         let mask: CGEventMask = (1 << CGEventType.keyDown.rawValue) |
+            (1 << CGEventType.keyUp.rawValue) |
             (1 << CGEventType.flagsChanged.rawValue)
         let tap = CGEvent.tapCreate(tap: .cghidEventTap, place: .headInsertEventTap,
                                     options: .defaultTap, eventsOfInterest: mask,
@@ -785,6 +787,7 @@ class KeyboardHookManager {
         mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp]) { _ in
             RustBridge.clearBufferAll() // Clear everything including word history
             skipWordRestoreAfterClick = true
+            isSpaceHeld = false // Issue #307: Reset stale Space state on click
         }
     }
 
@@ -831,6 +834,8 @@ private var recordingModifiers: CGEventFlags = [] // Current modifiers being hel
 private var peakRecordingModifiers: CGEventFlags = [] // Peak modifiers during recording
 private var shortcutObserver: NSObjectProtocol?
 private var restoreShortcutObserver: NSObjectProtocol?
+/// Issue #307: Track Space hold state - bypass Telex when Space held as leader key
+private var isSpaceHeld = false
 /// Skip word restore after mouse click (user may be selecting/deleting text)
 /// Reset to false after first keystroke
 private var skipWordRestoreAfterClick = false
@@ -1093,6 +1098,9 @@ private func keyboardCallback(
 
     // Handle modifier-only shortcuts (Ctrl+Shift, Cmd+Option, etc.)
     if type == .flagsChanged {
+        // Issue #307: Any modifier press resets Space hold (e.g., Cmd+Tab while holding Space)
+        isSpaceHeld = false
+
         // Issue #150: Control key press clears buffer (rhythm break like EVKey)
         let isControlNowPressed = flags.contains(.maskControl)
         if isControlNowPressed, !wasControlPressed {
@@ -1118,6 +1126,13 @@ private func keyboardCallback(
             wasModifierShortcutPressed = false
             DispatchQueue.main.async { NotificationCenter.default.post(name: .toggleVietnamese, object: nil) }
         }
+        return Unmanaged.passUnretained(event)
+    }
+
+    // Issue #307: Track Space hold/release for leader key bypass
+    if type == .keyUp {
+        let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
+        if keyCode == KeyCode.space { isSpaceHeld = false }
         return Unmanaged.passUnretained(event)
     }
 
@@ -1148,13 +1163,18 @@ private func keyboardCallback(
         return nil
     }
 
+    // Issue #307: Track Space hold - set on keyDown, cleared on keyUp
+    if keyCode == KeyCode.space { isSpaceHeld = true }
+
     // Compute modifier states early - needed for Enter handling and later processing
     let shift = flags.contains(.maskShift)
     let caps = shift || flags.contains(.maskAlphaShift)
-    // Issue #275: Option-only (without Cmd/Ctrl) should NOT bypass IME for shortcuts
-    // Option+Key produces special characters (e.g., Option+V → √) that can be shortcut triggers
+    // Issue #307: Bypass IME when modifier (Cmd/Ctrl/Option) or Space is held
+    // Prevents Telex/VNI transforms on shortcut keys (Option+W, Space+A in Neovim)
     let hasOption = flags.contains(.maskAlternate)
-    let bypassIME = flags.contains(.maskCommand) || flags.contains(.maskControl)
+    let hasCmdOrCtrl = flags.contains(.maskCommand) || flags.contains(.maskControl)
+    let spaceBypass = isSpaceHeld && keyCode != KeyCode.space // Don't bypass Space itself
+    let bypassIME = hasCmdOrCtrl || hasOption || spaceBypass
 
     // Enter: submit and trigger auto-capitalize pending state
     // IMPORTANT: Send Enter to engine FIRST to trigger auto-capitalize pending state,
@@ -1246,7 +1266,7 @@ private func keyboardCallback(
 
     // Issue #293: Option+Backspace deletes whole word at OS level
     // Clear engine buffer so state doesn't become stale after word deletion
-    if keyCode == KeyCode.backspace, hasOption, !bypassIME {
+    if keyCode == KeyCode.backspace, hasOption {
         RustBridge.clearBuffer()
         return Unmanaged.passUnretained(event)
     }
@@ -1290,22 +1310,20 @@ private func keyboardCallback(
         }
     }
 
-    // Issue #275: Handle Option-modified keys for special character shortcuts
-    // When Option is pressed (without Cmd/Ctrl), the key produces a special character
-    // (e.g., Option+V → √). Pass this character to engine for shortcut matching.
-    if hasOption, !bypassIME {
+    // Issue #275 + #307: Option+key → bypass Telex/VNI but still match shortcuts
+    // Option+V produces √, pass actual char to engine for shortcut matching (ctrl=true skips transforms)
+    if hasOption, !hasCmdOrCtrl {
         if let char = event.keyboardCharacter() {
-            // Process the actual character for shortcut matching
             if let (bs, chars, keyConsumed) = RustBridge.processKey(
-                keyCode: keyCode, caps: caps, ctrl: false, shift: shift, char: char
+                keyCode: keyCode, caps: caps, ctrl: true, shift: shift, char: char
             ) {
                 Log.key(keyCode, "option: bs=\(bs) chars='\(String(chars))' char='\(char)' consumed=\(keyConsumed)")
                 sendReplacement(backspace: bs, chars: chars, method: method, delays: delays, proxy: proxy)
-                return nil // Consume the event when shortcut matches
+                return nil
             }
-            // No shortcut match - let the character pass through normally
-            return Unmanaged.passUnretained(event)
         }
+        // No shortcut match - pass through for macOS to handle
+        return Unmanaged.passUnretained(event)
     }
 
     if let (bs, chars, keyConsumed) = RustBridge.processKey(keyCode: keyCode, caps: caps, ctrl: bypassIME, shift: shift) {
@@ -1839,6 +1857,7 @@ class PerAppModeManager {
 
         Log.refresh() // Re-check debug log file existence on app switch
         RustBridge.clearBuffer()
+        isSpaceHeld = false // Issue #307: Reset stale Space state on app switch
         clearDetectionCache() // Clear injection method cache on app switch
 
         // Snapshot per-app profile for keystroke hot path (thread-safe read)
