@@ -1544,6 +1544,9 @@ private func detectMethod() -> (InjectionMethod, (UInt32, UInt32, UInt32)) {
     // Caudex - char-by-char with higher delays for reliable text replacement
     if bundleId == "com.caudex.dev" { return cached(.charByChar, (5000, 15000, 5000), "char:caudex") }
 
+    // Foxit PDF Reader - char-by-char for reliable Vietnamese input in form fields
+    if bundleId == "com.foxit-software.Foxit.PDF.Reader" { return cached(.charByChar, (0, 0, 0), "char:foxit") }
+
     // Games - synchronous proxy injection (Issue #264: Vietnamese typing in LOL)
     if bundleId.hasPrefix("com.riotgames") { return cached(.syncProxy, (0, 0, 0), "sync:game") }
 
