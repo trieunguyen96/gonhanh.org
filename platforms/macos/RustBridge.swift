@@ -752,10 +752,8 @@ class KeyboardHookManager {
 
         RustBridge.initialize()
 
-        // Listen for keyboard events (mouse handled by NSEvent monitor)
-        // Issue #307: keyUp needed to track Space hold state for bypass
+        // Listen for keyboard events only (mouse handled by NSEvent monitor)
         let mask: CGEventMask = (1 << CGEventType.keyDown.rawValue) |
-            (1 << CGEventType.keyUp.rawValue) |
             (1 << CGEventType.flagsChanged.rawValue)
         let tap = CGEvent.tapCreate(tap: .cghidEventTap, place: .headInsertEventTap,
                                     options: .defaultTap, eventsOfInterest: mask,
@@ -787,7 +785,6 @@ class KeyboardHookManager {
         mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp]) { _ in
             RustBridge.clearBufferAll() // Clear everything including word history
             skipWordRestoreAfterClick = true
-            isSpaceHeld = false // Issue #307: Reset stale Space state on click
         }
     }
 
@@ -834,8 +831,6 @@ private var recordingModifiers: CGEventFlags = [] // Current modifiers being hel
 private var peakRecordingModifiers: CGEventFlags = [] // Peak modifiers during recording
 private var shortcutObserver: NSObjectProtocol?
 private var restoreShortcutObserver: NSObjectProtocol?
-/// Issue #307: Track Space hold state - bypass Telex when Space held as leader key
-private var isSpaceHeld = false
 /// Skip word restore after mouse click (user may be selecting/deleting text)
 /// Reset to false after first keystroke
 private var skipWordRestoreAfterClick = false
@@ -1098,9 +1093,6 @@ private func keyboardCallback(
 
     // Handle modifier-only shortcuts (Ctrl+Shift, Cmd+Option, etc.)
     if type == .flagsChanged {
-        // Issue #307: Any modifier press resets Space hold (e.g., Cmd+Tab while holding Space)
-        isSpaceHeld = false
-
         // Issue #150: Control key press clears buffer (rhythm break like EVKey)
         let isControlNowPressed = flags.contains(.maskControl)
         if isControlNowPressed, !wasControlPressed {
@@ -1126,13 +1118,6 @@ private func keyboardCallback(
             wasModifierShortcutPressed = false
             DispatchQueue.main.async { NotificationCenter.default.post(name: .toggleVietnamese, object: nil) }
         }
-        return Unmanaged.passUnretained(event)
-    }
-
-    // Issue #307: Track Space hold/release for leader key bypass
-    if type == .keyUp {
-        let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
-        if keyCode == KeyCode.space { isSpaceHeld = false }
         return Unmanaged.passUnretained(event)
     }
 
@@ -1163,18 +1148,14 @@ private func keyboardCallback(
         return nil
     }
 
-    // Issue #307: Track Space hold - set on keyDown, cleared on keyUp
-    if keyCode == KeyCode.space { isSpaceHeld = true }
-
     // Compute modifier states early - needed for Enter handling and later processing
     let shift = flags.contains(.maskShift)
     let caps = shift || flags.contains(.maskAlphaShift)
-    // Issue #307: Bypass IME when modifier (Cmd/Ctrl/Option) or Space is held
-    // Prevents Telex/VNI transforms on shortcut keys (Option+W, Space+A in Neovim)
+    // Issue #275: Option-only (without Cmd/Ctrl) should NOT bypass IME for shortcuts
+    // Option+Key produces special characters (e.g., Option+V → √) that can be shortcut triggers
     let hasOption = flags.contains(.maskAlternate)
     let hasCmdOrCtrl = flags.contains(.maskCommand) || flags.contains(.maskControl)
-    let spaceBypass = isSpaceHeld && keyCode != KeyCode.space // Don't bypass Space itself
-    let bypassIME = hasCmdOrCtrl || hasOption || spaceBypass
+    let bypassIME = hasCmdOrCtrl
 
     // Enter: submit and trigger auto-capitalize pending state
     // IMPORTANT: Send Enter to engine FIRST to trigger auto-capitalize pending state,
@@ -1857,7 +1838,6 @@ class PerAppModeManager {
 
         Log.refresh() // Re-check debug log file existence on app switch
         RustBridge.clearBuffer()
-        isSpaceHeld = false // Issue #307: Reset stale Space state on app switch
         clearDetectionCache() // Clear injection method cache on app switch
 
         // Snapshot per-app profile for keystroke hot path (thread-safe read)
