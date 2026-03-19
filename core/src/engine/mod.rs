@@ -4727,10 +4727,14 @@ impl Engine {
                         if is_double_ss || is_double_ff {
                             let original_lower = stored.to_lowercase();
                             if english_dict::is_english_word(&original_lower) {
-                                // Check if buffer should be kept (in keep list or valid Vietnamese)
+                                // Check if buffer should be kept (in keep list, valid Vietnamese, or valid English word)
+                                // e.g., "buss" → buffer "bus" is valid English → keep "bus"
+                                // e.g., "mass" → buffer "mas" is NOT valid English → restore "mass"
                                 let buffer_str = self.get_buffer_string().to_lowercase();
-                                if dictionary::should_keep(&buffer_str) {
-                                    // Buffer is in keep list → don't restore
+                                if dictionary::should_keep(&buffer_str)
+                                    || english_dict::is_english_word(&buffer_str)
+                                {
+                                    // Buffer is in keep list or is a valid English word → don't restore
                                 } else {
                                     return self.build_raw_chars_exact();
                                 }

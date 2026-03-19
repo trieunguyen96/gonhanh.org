@@ -56,9 +56,9 @@ fn revert_at_end_keeps_buffer_4char() {
     // - Words IN whitelist → restore to raw (boss, buff, cuff, loss, moss, puff)
     // - Words NOT in whitelist → keep buffer (soss → sos, varr → var, etc.)
     telex_auto_restore(&[
-        // IN whitelist → restore to raw
+        // IN whitelist → restore to raw (unless buffer is also valid English word)
         ("BOSS ", "BOSS "),
-        ("LOSS ", "LOSS "),
+        ("LOSS ", "LOS "), // "LOS" in English dict → keep buffer (Issue #337)
         ("MOSS ", "MOSS "),
         ("boss ", "boss "),
         ("buff ", "buff "),

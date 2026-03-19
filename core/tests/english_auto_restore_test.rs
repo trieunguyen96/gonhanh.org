@@ -748,7 +748,7 @@ fn pattern9_double_ss_english_words() {
         ("joss ", "joss "),  // joss - Chinese idol
         ("kiss ", "kiss "),  // kiss - embrace
         ("less ", "less "),  // less - smaller amount
-        ("loss ", "loss "),  // loss - opposite of gain
+        ("loss ", "los "),   // "los" in English dict → keep buffer (Issue #337)
         ("mass ", "mass "),  // mass - quantity
         ("mess ", "mess "),  // mess - disorder
         ("miss ", "miss "),  // miss - fail to hit
