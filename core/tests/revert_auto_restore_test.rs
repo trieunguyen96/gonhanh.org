@@ -119,6 +119,16 @@ fn revert_at_end_restores_long_english_words() {
     ]);
 }
 
+#[test]
+fn revert_double_vowel_keeps_buffer() {
+    // Double vowel (ee, oo, aa) reverts circumflex/breve mark, buffer is clean English word
+    // Example: "memee" = m-e-m-e-e
+    // - 4th 'e' applies circumflex → "mêm"
+    // - 5th 'e' reverts circumflex → "meme" (buffer)
+    // - "meme" is valid English → keep buffer, don't restore to raw "memee"
+    telex_auto_restore(&[("memee ", "meme ")]);
+}
+
 // =============================================================================
 // DOUBLE D (Đ) + AUTO-RESTORE
 // Tests for dd → đ conversion and validation of resulting syllables
