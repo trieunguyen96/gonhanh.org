@@ -24,7 +24,6 @@ class LaunchAtLoginManager: LaunchAtLoginProtocol {
 
     private init() {}
 
-    /// Only allow login item registration when running from /Applications
     /// Prevents backgroundtaskmanagementd from polling debug/build copies
     private var isRunningFromApplications: Bool {
         let appPath = Bundle.main.bundlePath

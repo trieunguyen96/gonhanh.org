@@ -366,15 +366,12 @@ class AppState: ObservableObject {
             autoEnableLaunchAtLogin()
         }
 
-        // Refresh login status when user returns to app (e.g. after changing in System Settings)
-        // This replaces the 2s polling timer that caused backgroundtaskmanagementd spam (issue #351)
-        NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.didActivateApplicationNotification,
+        // Replaces polling timer that caused backgroundtaskmanagementd spam (#351)
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
             object: nil,
             queue: .main
-        ) { [weak self] notification in
-            guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-                  app.bundleIdentifier == Bundle.main.bundleIdentifier else { return }
+        ) { [weak self] _ in
             self?.refreshLaunchAtLoginStatus()
         }
     }
