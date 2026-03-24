@@ -55,7 +55,6 @@ class AppState: ObservableObject {
 
     private var isSilentUpdate = false
     private var cancellables = Set<AnyCancellable>()
-    private var launchAtLoginTimer: Timer?
 
     @Published var isEnabled: Bool {
         didSet {
@@ -367,8 +366,13 @@ class AppState: ObservableObject {
             autoEnableLaunchAtLogin()
         }
 
-        launchAtLoginTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            DispatchQueue.main.async { self?.refreshLaunchAtLoginStatus() }
+        // Replaces polling timer that caused backgroundtaskmanagementd spam (#351)
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.refreshLaunchAtLoginStatus()
         }
     }
 
