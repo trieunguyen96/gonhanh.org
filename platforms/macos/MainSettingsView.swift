@@ -55,6 +55,13 @@ class AppState: ObservableObject {
 
     private var isSilentUpdate = false
     private var cancellables = Set<AnyCancellable>()
+    private var activationObserver: NSObjectProtocol?
+
+    deinit {
+        if let observer = activationObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
 
     @Published var isEnabled: Bool {
         didSet {
@@ -367,14 +374,12 @@ class AppState: ObservableObject {
         }
 
         // Refresh login status when user returns to app (e.g. after changing in System Settings)
-        // This replaces the 2s polling timer that caused backgroundtaskmanagementd spam (issue #351)
-        NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.didActivateApplicationNotification,
+        // Replaces 2s polling timer that caused backgroundtaskmanagementd spam (issue #351)
+        activationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
             object: nil,
             queue: .main
-        ) { [weak self] notification in
-            guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-                  app.bundleIdentifier == Bundle.main.bundleIdentifier else { return }
+        ) { [weak self] _ in
             self?.refreshLaunchAtLoginStatus()
         }
     }
