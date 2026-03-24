@@ -55,7 +55,6 @@ class AppState: ObservableObject {
 
     private var isSilentUpdate = false
     private var cancellables = Set<AnyCancellable>()
-    private var launchAtLoginTimer: Timer?
 
     @Published var isEnabled: Bool {
         didSet {
@@ -367,8 +366,16 @@ class AppState: ObservableObject {
             autoEnableLaunchAtLogin()
         }
 
-        launchAtLoginTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            DispatchQueue.main.async { self?.refreshLaunchAtLoginStatus() }
+        // Refresh login status when user returns to app (e.g. after changing in System Settings)
+        // This replaces the 2s polling timer that caused backgroundtaskmanagementd spam (issue #351)
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  app.bundleIdentifier == Bundle.main.bundleIdentifier else { return }
+            self?.refreshLaunchAtLoginStatus()
         }
     }
 

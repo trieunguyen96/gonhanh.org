@@ -24,6 +24,13 @@ class LaunchAtLoginManager: LaunchAtLoginProtocol {
 
     private init() {}
 
+    /// Only allow login item registration when running from /Applications
+    /// Prevents backgroundtaskmanagementd from polling debug/build copies
+    private var isRunningFromApplications: Bool {
+        let appPath = Bundle.main.bundlePath
+        return appPath.hasPrefix("/Applications/")
+    }
+
     /// Check if launch at login is currently enabled
     /// Returns true if status is .enabled OR .requiresApproval (user added manually in System Settings)
     var isEnabled: Bool {
@@ -39,6 +46,10 @@ class LaunchAtLoginManager: LaunchAtLoginProtocol {
     /// Enable launch at login
     func enable() throws {
         if #available(macOS 13.0, *) {
+            guard isRunningFromApplications else {
+                debugLog("[LaunchAtLogin] Skipping registration - not running from /Applications")
+                return
+            }
             let status = SMAppService.mainApp.status
             // Don't register if already enabled or user added manually (requiresApproval)
             // This prevents duplicate login items on version updates
