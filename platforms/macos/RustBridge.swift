@@ -1491,8 +1491,8 @@ private func detectMethod() -> (InjectionMethod, (UInt32, UInt32, UInt32)) {
     // Safari: address bar uses emptyCharPrefix, content areas (Google Docs) use charByChar
     // Must be checked BEFORE general browsers array since Safari needs special content handling
     if bundleId == "com.apple.Safari" || bundleId == "com.apple.SafariTechnologyPreview" {
-        if role == "AXTextField" { return cached(.emptyCharPrefix, (0, 0, 0), "emptyChar:safari") }
-        return cached(.charByChar, (0, 0, 0), "char:safari")
+        if role == "AXTextField" { return cached(.emptyCharPrefix, (3000, 8000, 3000), "emptyChar:safari") }
+        return cached(.charByChar, (3000, 8000, 3000), "char:safari")
     }
 
     // Browser address bars (AXTextField/AXTextArea/AXWindow): emptyCharPrefix to break autocomplete
@@ -1536,7 +1536,8 @@ private func detectMethod() -> (InjectionMethod, (UInt32, UInt32, UInt32)) {
         "com.openai.atlas", // ChatGPT Atlas
     ]
     // All browser contexts use emptyCharPrefix to break autocomplete/suggestion highlights
-    if browsers.contains(bundleId) { return cached(.emptyCharPrefix, (0, 0, 0), "emptyChar:browser") }
+    // Medium delays (3ms/8ms/3ms) to handle web apps with popup interception (e.g. Telegram Web)
+    if browsers.contains(bundleId) { return cached(.emptyCharPrefix, (3000, 8000, 3000), "emptyChar:browser") }
     if role == "AXTextField", bundleId.hasPrefix("com.jetbrains") { return cached(.selection, (0, 0, 0), "sel:jb") }
 
     // Microsoft Office apps - backspace method (selection conflicts with autocomplete)
