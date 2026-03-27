@@ -6181,6 +6181,7 @@ follow
 followed
 following
 follows
+fomo
 fondness
 font
 fonts
