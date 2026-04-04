@@ -94,6 +94,6 @@ endif()
 
 # Size optimization
 if(MSVC)
-    target_compile_options(gonhanh PRIVATE /O1 /GL /GS-)
+    target_compile_options(gonhanh PRIVATE /O1 /GL)
     target_link_options(gonhanh PRIVATE /LTCG /OPT:REF /OPT:ICF)
 endif()

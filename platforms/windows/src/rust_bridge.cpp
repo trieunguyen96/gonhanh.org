@@ -26,6 +26,7 @@ std::wstring Utf32ToUtf16(const uint32_t* chars, uint8_t count) {
 std::string Utf16ToUtf8(const std::wstring& wstr) {
     if (wstr.empty()) return {};
     int size = WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    if (size <= 0) return {};
     std::string result(size - 1, 0);
     WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), -1, result.data(), size, nullptr, nullptr);
     return result;

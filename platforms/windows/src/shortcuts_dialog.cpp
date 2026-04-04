@@ -4,6 +4,8 @@
 #include <commdlg.h>
 #include <fstream>
 #include <sstream>
+#include <codecvt>
+#include <locale>
 
 namespace gonhanh {
 
@@ -209,6 +211,7 @@ void ShortcutsDialog::ImportShortcuts() {
     }
 
     std::wifstream file(filename);
+    file.imbue(std::locale(file.getloc(), new std::codecvt_utf8_utf16<wchar_t>));
     if (!file.is_open()) {
         MessageBoxW(hwnd_, L"Không thể mở file", L"Lỗi", MB_ICONERROR);
         return;

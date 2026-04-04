@@ -891,6 +891,7 @@ kris	krí
 hoses	hoes
 postsecondary	potsecondary
 samaj	sậm
+rosario	rôải
 ast	át
 loco	lôc
 lans	lán
@@ -1149,7 +1150,6 @@ asc	ác
 nar	nả
 bora	boả
 hajj	haj
-pawns	pắn
 toms	tóm
 vaux	vãu
 erst	ét

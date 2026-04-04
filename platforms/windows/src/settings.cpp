@@ -23,7 +23,7 @@ void Settings::Load() {
         RegQueryValueExW(key, name, nullptr, nullptr, (LPBYTE)&value, &size);
     };
 
-    DWORD temp;
+    DWORD temp = 1;  // Default: enabled
     readDword(L"Enabled", temp);
     enabled = (temp != 0);
 
@@ -71,10 +71,11 @@ void Settings::Load() {
         if (RegQueryValueExW(key, L"Shortcuts", nullptr, nullptr, (LPBYTE)buffer.data(), &bufferSize) == ERROR_SUCCESS) {
             shortcuts.clear();
             const wchar_t* ptr = buffer.data();
-            while (*ptr) {
+            const wchar_t* end = buffer.data() + buffer.size();
+            while (ptr < end && *ptr) {
                 std::wstring trigger = ptr;
                 ptr += trigger.length() + 1;
-                if (*ptr) {
+                if (ptr < end && *ptr) {
                     std::wstring replacement = ptr;
                     ptr += replacement.length() + 1;
                     shortcuts.push_back({trigger, replacement, true});

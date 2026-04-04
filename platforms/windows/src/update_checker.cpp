@@ -136,7 +136,8 @@ void UpdateChecker::QueryGitHubReleases() {
         return;
     }
 
-    // Read response
+    // Read response (cap at 1MB to prevent abuse)
+    const size_t MAX_RESPONSE = 1024 * 1024;
     DWORD bytesAvailable = 0;
     do {
         bytesAvailable = 0;
@@ -150,6 +151,7 @@ void UpdateChecker::QueryGitHubReleases() {
                 response += buffer.data();
             }
         }
+        if (response.size() > MAX_RESPONSE) break;
     } while (bytesAvailable > 0);
 
     // Cleanup
