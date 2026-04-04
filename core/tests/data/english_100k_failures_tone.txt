@@ -1,7 +1,7 @@
 # English 100k Failures - Tone Markers
 # Cause: words ending with s/f/r/x/j trigger tone marks
 # Format: WORD \t ACTUAL \t BUFFER
-# Total: 1257 (+ 95 both)
+# Total: 1269 (+ 95 both)
 #
 # WORD: English word typed
 # ACTUAL: engine output after space
@@ -31,6 +31,7 @@ nor	nỏ	nỏ
 six	sĩ	sĩ
 says	sáy	sáy
 tax	tã	tã
+loss	los	los
 yes	yé	yé
 chief	chiè	chiè
 sir	sỉ	sỉ
@@ -261,12 +262,14 @@ piers	pié	pié
 majors	máo	máo
 loaf	loà	loà
 pius	píu	píu
+dass	das	das
 vor	vỏ	vỏ
 ras	rá	rá
 pesos	péo	péo
 ur	ủ	ủ
 mats	mát	mát
 bays	báy	báy
+cass	cas	cas
 liar	lỉa	lỉa
 cures	cué	cué
 boer	boẻ	boẻ
@@ -317,6 +320,7 @@ def	dè	dè
 hermes	hếm	hếm
 chests	chets	chets
 loser	loẻ	loẻ
+diss	dis	dis
 pies	pié	pié
 vers	vé	vé
 har	hả	hả
@@ -401,6 +405,7 @@ suis	súi	súi
 soaps	soáp	soáp
 longs	lóng	lóng
 mens	mén	mén
+lass	las	las
 oas	oá	oá
 lars	lá	lá
 ams	ám	ám
@@ -583,6 +588,7 @@ musings	muings	muings
 usr	ủ	ủ
 cots	cót	cót
 dons	dón	dón
+buss	bus	bus
 nar	nả	nả
 hajj	haj	haj
 toms	tóm	tóm
@@ -720,6 +726,7 @@ heures	hếu	hếu
 thongs	thóng	thóng
 nomos	nốm	nốm
 kiefer	kiể	kiể
+gass	gas	gas
 mayas	mấy	mấy
 hofer	hoẻ	hoẻ
 purser	puẻ	puẻ
@@ -895,6 +902,7 @@ bix	bĩ	bĩ
 thats	thát	thát
 treks	trék	trék
 cocos	cốc	cốc
+poss	pos	pos
 mif	mì	mì
 poser	poẻ	poẻ
 ists	its	its
@@ -907,6 +915,7 @@ carats	cất	cất
 mers	mé	mé
 syr	sỷ	sỷ
 ressources	resources	resources
+doss	dos	dos
 anf	àn	àn
 asuras	ấu	ấu
 lajos	láo	láo
@@ -992,6 +1001,7 @@ hirer	hier	hier
 sops	sóp	sóp
 amax	ẫm	ẫm
 gyms	gým	gým
+dess	des	des
 ruses	rues	rues
 gaf	gà	gà
 rescher	rểch	rểch
@@ -1154,6 +1164,7 @@ lianas	líân	líân
 transf	tràn	tràn
 yx	ỹ	ỹ
 musts	muts	muts
+ress	res	res
 nars	ná	ná
 conj	cọn	cọn
 sofer	soẻ	soẻ
@@ -1228,6 +1239,7 @@ vues	vué	vué
 ipf	ìp	ìp
 lecher	lểch	lểch
 hots	hót	hót
+coss	cos	cos
 thej	thẹ	thẹ
 teos	téo	téo
 locos	lốc	lốc

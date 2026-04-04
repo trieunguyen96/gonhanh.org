@@ -58,3 +58,6 @@ obj/
 plans/
 CLAUDE.md
 platforms/windows/build/
+
+refs/
+repomix-output.xml

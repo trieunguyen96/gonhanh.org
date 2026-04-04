@@ -447,9 +447,36 @@ private class TextInjector {
 
     /// Post text in chunks (CGEvent has 20-char limit)
     /// Set chunkSize=1 for character-by-character mode (slower but more reliable for some apps)
+    /// Handles newline characters by sending Return key events (Issue #343)
     /// Returns number of chunks posted
     @discardableResult
     private func postText(_ text: String, source: CGEventSource, delay: UInt32 = 0, proxy: CGEventTapProxy? = nil, chunkSize: Int = 20) -> Int {
+        // Fast path: no newlines (99%+ of calls) — skip split allocation
+        guard text.contains("\n") else {
+            return postTextSegment(text, source: source, delay: delay, proxy: proxy, chunkSize: chunkSize)
+        }
+        // Split text on newlines, send Return key between segments (Issue #343)
+        let segments = text.split(separator: "\n", omittingEmptySubsequences: false)
+        var totalChunks = 0
+
+        for (i, segment) in segments.enumerated() {
+            // Send text segment
+            if !segment.isEmpty {
+                totalChunks += postTextSegment(String(segment), source: source, delay: delay, proxy: proxy, chunkSize: chunkSize)
+            }
+            // Send Return key between segments (not after the last one)
+            if i < segments.count - 1 {
+                postKey(KeyCode.returnKey, source: source, proxy: proxy)
+                if delay > 0 { usleep(delay) }
+                totalChunks += 1
+            }
+        }
+        return totalChunks
+    }
+
+    /// Post a text segment (no newlines) in chunks
+    @discardableResult
+    private func postTextSegment(_ text: String, source: CGEventSource, delay: UInt32 = 0, proxy: CGEventTapProxy? = nil, chunkSize: Int = 20) -> Int {
         let utf16 = Array(text.utf16)
         var offset = 0
         var chunkNum = 0
@@ -1127,7 +1154,8 @@ private func keyboardCallback(
     // Issue #275: Option-only (without Cmd/Ctrl) should NOT bypass IME for shortcuts
     // Option+Key produces special characters (e.g., Option+V → √) that can be shortcut triggers
     let hasOption = flags.contains(.maskAlternate)
-    let bypassIME = flags.contains(.maskCommand) || flags.contains(.maskControl)
+    let hasCmdOrCtrl = flags.contains(.maskCommand) || flags.contains(.maskControl)
+    let bypassIME = hasCmdOrCtrl
 
     // Enter: submit and trigger auto-capitalize pending state
     // IMPORTANT: Send Enter to engine FIRST to trigger auto-capitalize pending state,
@@ -1219,7 +1247,7 @@ private func keyboardCallback(
 
     // Issue #293: Option+Backspace deletes whole word at OS level
     // Clear engine buffer so state doesn't become stale after word deletion
-    if keyCode == KeyCode.backspace, hasOption, !bypassIME {
+    if keyCode == KeyCode.backspace, hasOption {
         RustBridge.clearBuffer()
         return Unmanaged.passUnretained(event)
     }
@@ -1263,22 +1291,20 @@ private func keyboardCallback(
         }
     }
 
-    // Issue #275: Handle Option-modified keys for special character shortcuts
-    // When Option is pressed (without Cmd/Ctrl), the key produces a special character
-    // (e.g., Option+V → √). Pass this character to engine for shortcut matching.
-    if hasOption, !bypassIME {
+    // Issue #275 + #307: Option+key → bypass Telex/VNI but still match shortcuts
+    // Option+V produces √, pass actual char to engine for shortcut matching (ctrl=true skips transforms)
+    if hasOption, !hasCmdOrCtrl {
         if let char = event.keyboardCharacter() {
-            // Process the actual character for shortcut matching
             if let (bs, chars, keyConsumed) = RustBridge.processKey(
-                keyCode: keyCode, caps: caps, ctrl: false, shift: shift, char: char
+                keyCode: keyCode, caps: caps, ctrl: true, shift: shift, char: char
             ) {
                 Log.key(keyCode, "option: bs=\(bs) chars='\(String(chars))' char='\(char)' consumed=\(keyConsumed)")
                 sendReplacement(backspace: bs, chars: chars, method: method, delays: delays, proxy: proxy)
-                return nil // Consume the event when shortcut matches
+                return nil
             }
-            // No shortcut match - let the character pass through normally
-            return Unmanaged.passUnretained(event)
         }
+        // No shortcut match - pass through for macOS to handle
+        return Unmanaged.passUnretained(event)
     }
 
     if let (bs, chars, keyConsumed) = RustBridge.processKey(keyCode: keyCode, caps: caps, ctrl: bypassIME, shift: shift) {
@@ -1465,8 +1491,8 @@ private func detectMethod() -> (InjectionMethod, (UInt32, UInt32, UInt32)) {
     // Safari: address bar uses emptyCharPrefix, content areas (Google Docs) use charByChar
     // Must be checked BEFORE general browsers array since Safari needs special content handling
     if bundleId == "com.apple.Safari" || bundleId == "com.apple.SafariTechnologyPreview" {
-        if role == "AXTextField" { return cached(.emptyCharPrefix, (0, 0, 0), "emptyChar:safari") }
-        return cached(.charByChar, (0, 0, 0), "char:safari")
+        if role == "AXTextField" { return cached(.emptyCharPrefix, (3000, 8000, 3000), "emptyChar:safari") }
+        return cached(.charByChar, (3000, 8000, 3000), "char:safari")
     }
 
     // Browser address bars (AXTextField/AXTextArea/AXWindow): emptyCharPrefix to break autocomplete
@@ -1509,8 +1535,9 @@ private func detectMethod() -> (InjectionMethod, (UInt32, UInt32, UInt32)) {
         "com.duckduckgo.macos.browser", // DuckDuckGo
         "com.openai.atlas", // ChatGPT Atlas
     ]
-    let addressBarRoles: Set<String> = ["AXTextField", "AXTextArea", "AXWindow"]
-    if browsers.contains(bundleId), let role, addressBarRoles.contains(role) { return cached(.emptyCharPrefix, (0, 0, 0), "emptyChar:browser") }
+    // All browser contexts use emptyCharPrefix to break autocomplete/suggestion highlights
+    // Medium delays (3ms/8ms/3ms) to handle web apps with popup interception (e.g. Telegram Web)
+    if browsers.contains(bundleId) { return cached(.emptyCharPrefix, (3000, 8000, 3000), "emptyChar:browser") }
     if role == "AXTextField", bundleId.hasPrefix("com.jetbrains") { return cached(.selection, (0, 0, 0), "sel:jb") }
 
     // Microsoft Office apps - backspace method (selection conflicts with autocomplete)
@@ -1543,6 +1570,9 @@ private func detectMethod() -> (InjectionMethod, (UInt32, UInt32, UInt32)) {
 
     // Caudex - char-by-char with higher delays for reliable text replacement
     if bundleId == "com.caudex.dev" { return cached(.charByChar, (5000, 15000, 5000), "char:caudex") }
+
+    // Foxit PDF Reader - char-by-char for reliable Vietnamese input in form fields
+    if bundleId == "com.foxit-software.Foxit.PDF.Reader" { return cached(.charByChar, (0, 0, 0), "char:foxit") }
 
     // Games - synchronous proxy injection (Issue #264: Vietnamese typing in LOL)
     if bundleId.hasPrefix("com.riotgames") { return cached(.syncProxy, (0, 0, 0), "sync:game") }

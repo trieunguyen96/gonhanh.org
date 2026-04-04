@@ -1,6 +1,6 @@
 # English 100k Typing Variants Failures
 # Format: WORD \t VARIANT \t EXPECTED \t ACTUAL \t BUFFER
-# Total failures: 395
+# Total failures: 393
 
 been	been	been	bên	bên
 see	see	see	sê	sê
@@ -110,7 +110,6 @@ beets	beets	beets	bết	bêts
 norwood	norwood	norwood	noỏd	norwôd
 pee	pee	pee	pê	pê
 saws	saws	saws	sắ	săs
-lawlessness	lawwlessness	lawlessness	lawwlessness	lăwlessness
 geertz	geeertz	geertz	geeertz	gêertz
 cocoon	cocoon	cocoon	cocon	cocôn
 ree	ree	ree	rê	rê
@@ -278,7 +277,6 @@ neer	neer	neer	nể	nêr
 tows	tows	tows	tớ	tơs
 koop	kooop	koop	kooop	kôop
 gowan	gowan	gowan	gơan	gơan
-lowpass	lowwpass	lowpass	lowwpass	lơwpass
 kawamura	kawwamura	kawamura	kawwamura	kăwamura
 longwood	longwood	longwood	longod	longwôd
 ddp	ddp	ddp	đp	đp

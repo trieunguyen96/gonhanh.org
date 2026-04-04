@@ -748,7 +748,7 @@ fn pattern9_double_ss_english_words() {
         ("joss ", "joss "),  // joss - Chinese idol
         ("kiss ", "kiss "),  // kiss - embrace
         ("less ", "less "),  // less - smaller amount
-        ("loss ", "loss "),  // loss - opposite of gain
+        ("loss ", "los "),   // "los" in English dict → keep buffer (Issue #337)
         ("mass ", "mass "),  // mass - quantity
         ("mess ", "mess "),  // mess - disorder
         ("miss ", "miss "),  // miss - fail to hit
@@ -1446,4 +1446,13 @@ fn w_medial_vowel_modifier_pattern() {
         ("banwxg ", "bẵng "), // ngã tone
         ("banwjg ", "bặng "), // nặng tone
     ]);
+}
+
+// =============================================================================
+// DOUBLE CONSONANT AUTO-RESTORE
+// =============================================================================
+
+#[test]
+fn double_consonant_auto_restore_missa_business() {
+    telex_auto_restore(&[("missa ", "misa "), ("bussiness ", "business ")]);
 }

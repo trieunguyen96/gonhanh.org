@@ -67,14 +67,16 @@ impl Result {
     }
 
     pub fn send(backspace: u8, chars: &[char]) -> Self {
+        // Cap at u8::MAX (255) to prevent count overflow — MAX is 256 but count is u8
+        let n = chars.len().min(u8::MAX as usize);
         let mut result = Self {
             chars: [0; MAX],
             action: Action::Send as u8,
             backspace,
-            count: chars.len().min(MAX) as u8,
+            count: n as u8,
             flags: 0,
         };
-        for (i, &c) in chars.iter().take(MAX).enumerate() {
+        for (i, &c) in chars.iter().take(n).enumerate() {
             result.chars[i] = c as u32;
         }
         result
@@ -4725,10 +4727,14 @@ impl Engine {
                         if is_double_ss || is_double_ff {
                             let original_lower = stored.to_lowercase();
                             if english_dict::is_english_word(&original_lower) {
-                                // Check if buffer should be kept (in keep list or valid Vietnamese)
+                                // Check if buffer should be kept (in keep list, valid Vietnamese, or valid English word)
+                                // e.g., "buss" → buffer "bus" is valid English → keep "bus"
+                                // e.g., "mass" → buffer "mas" is NOT valid English → restore "mass"
                                 let buffer_str = self.get_buffer_string().to_lowercase();
-                                if dictionary::should_keep(&buffer_str) {
-                                    // Buffer is in keep list → don't restore
+                                if dictionary::should_keep(&buffer_str)
+                                    || english_dict::is_english_word(&buffer_str)
+                                {
+                                    // Buffer is in keep list or is a valid English word → don't restore
                                 } else {
                                     return self.build_raw_chars_exact();
                                 }
@@ -5427,8 +5433,17 @@ impl Engine {
                     )
             });
 
-            if has_telex_double && english_dict::is_english_word(&raw_str) {
-                return true; // Telex double + Not in VN dict + IS in EN dict → invalid VN
+            if has_telex_double {
+                // If buffer IS a valid English word, keep it regardless of raw spelling
+                // e.g., "bussiness" → buffer "business" (in dict) → not invalid
+                let buffer_str_lower = self.get_buffer_string().to_lowercase();
+                if english_dict::is_english_word(&buffer_str_lower) {
+                    return false; // Buffer is valid English → keep it
+                }
+                // Raw is English word but buffer isn't → invalid VN (trigger restore)
+                if english_dict::is_english_word(&raw_str) {
+                    return true; // Telex double + Not in VN dict + IS in EN dict → invalid VN
+                }
             }
         }
 
