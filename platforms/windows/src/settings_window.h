@@ -31,9 +31,11 @@ private:
     static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
     HWND hwnd_ = nullptr;
+    HWND cmbMethod_ = nullptr;
     bool visible_ = false;
 
     // Custom painted section 2 position and click area
+    int section2Y_ = 0;
     RECT shortcutsRowRect_ = {};
 
     // Scrolling (content area only)
