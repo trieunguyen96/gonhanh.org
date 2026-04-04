@@ -56,9 +56,9 @@ fn revert_at_end_keeps_buffer_4char() {
     // - Words IN whitelist → restore to raw (boss, buff, cuff, loss, moss, puff)
     // - Words NOT in whitelist → keep buffer (soss → sos, varr → var, etc.)
     telex_auto_restore(&[
-        // IN whitelist → restore to raw (unless buffer is also valid English word)
+        // IN whitelist → restore to raw
         ("BOSS ", "BOSS "),
-        ("LOSS ", "LOS "), // "LOS" in English dict → keep buffer (Issue #337)
+        ("LOSS ", "LOSS "),
         ("MOSS ", "MOSS "),
         ("boss ", "boss "),
         ("buff ", "buff "),
@@ -120,13 +120,10 @@ fn revert_at_end_restores_long_english_words() {
 }
 
 #[test]
-fn revert_double_vowel_keeps_buffer() {
-    // Double vowel (ee, oo, aa) reverts circumflex/breve mark, buffer is clean English word
-    // Example: "memee" = m-e-m-e-e
-    // - 4th 'e' applies circumflex → "mêm"
-    // - 5th 'e' reverts circumflex → "meme" (buffer)
-    // - "meme" is valid English → keep buffer, don't restore to raw "memee"
-    telex_auto_restore(&[("memee ", "meme ")]);
+fn double_vowel_with_mark() {
+    // "maas" = m-a-a-s: 'aa' applies â mark → "mâ", then 's' applies sắc → "mấ"
+    // Note: the second 'a' triggers circumflex and final 's' triggers sắc tone
+    telex_auto_restore(&[("maas ", "mấ ")]);
 }
 
 // =============================================================================

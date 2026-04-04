@@ -1,5 +1,5 @@
-import Carbon.HIToolbox
 import Foundation
+import Carbon.HIToolbox
 
 /// Non-Latin language codes that require disabling Gõ Nhanh
 /// These languages use scripts incompatible with Vietnamese input
@@ -16,12 +16,6 @@ private let nonLatinLanguages: Set<String> = [
     "ru", "uk", "be", "bg", "mk", "sr", "el", "ka", "hy", "am", "ti",
     // Vietnamese IME (user already has Vietnamese input method)
     "vi",
-]
-
-/// Input source IDs that should disable Gõ Nhanh
-/// These are Latin-based but not for normal text input (e.g., hex code entry)
-private let blockedInputSourceIds: Set<String> = [
-    "com.apple.keylayout.UnicodeHexInput",
 ]
 
 // MARK: - Input Source Observer
@@ -62,15 +56,14 @@ final class InputSourceObserver {
     /// Initial check - only updates display character and allowed flag, doesn't change enabled state
     private func handleChangeInitial() {
         guard let source = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue(),
-              let idPtr = TISGetInputSourceProperty(source, kTISPropertyInputSourceID)
-        else {
+              let idPtr = TISGetInputSourceProperty(source, kTISPropertyInputSourceID) else {
             return
         }
 
         let currentId = Unmanaged<CFString>.fromOpaque(idPtr).takeUnretainedValue() as String
         lastInputSourceId = currentId
         currentDisplayChar = getDisplayChar(from: source, id: currentId)
-        isAllowedInputSource = isInputSourceAllowed(source: source, id: currentId)
+        isAllowedInputSource = isInputSourceAllowed(source: source)
         // Don't call setEnabled - let PerAppModeManager handle initial state
     }
 
@@ -88,8 +81,7 @@ final class InputSourceObserver {
 
     fileprivate func handleChange() {
         guard let source = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue(),
-              let idPtr = TISGetInputSourceProperty(source, kTISPropertyInputSourceID)
-        else {
+              let idPtr = TISGetInputSourceProperty(source, kTISPropertyInputSourceID) else {
             return
         }
 
@@ -101,7 +93,7 @@ final class InputSourceObserver {
 
         // Get display character from input source
         currentDisplayChar = getDisplayChar(from: source, id: currentId)
-        isAllowedInputSource = isInputSourceAllowed(source: source, id: currentId)
+        isAllowedInputSource = isInputSourceAllowed(source: source)
 
         if isAllowedInputSource {
             // Restore user preference from AppState (supports per-app mode)
@@ -115,15 +107,11 @@ final class InputSourceObserver {
         NotificationCenter.default.post(name: .inputSourceChanged, object: nil)
     }
 
-    private func isInputSourceAllowed(source: TISInputSource, id: String) -> Bool {
-        // Block special input sources by ID (e.g., Unicode Hex Input)
-        if blockedInputSourceIds.contains(id) { return false }
-
+    private func isInputSourceAllowed(source: TISInputSource) -> Bool {
         // Get primary language of the input source
         guard let langsPtr = TISGetInputSourceProperty(source, kTISPropertyInputSourceLanguages),
               let langs = Unmanaged<CFArray>.fromOpaque(langsPtr).takeUnretainedValue() as? [String],
-              let lang = langs.first
-        else {
+              let lang = langs.first else {
             // No language info → assume Latin (allow)
             return true
         }
@@ -135,14 +123,10 @@ final class InputSourceObserver {
     }
 
     private func getDisplayChar(from source: TISInputSource, id: String) -> String {
-        // Blocked input sources show "E" (disabled)
-        if blockedInputSourceIds.contains(id) { return "E" }
-
         // Get language code
         if let langsPtr = TISGetInputSourceProperty(source, kTISPropertyInputSourceLanguages),
            let langs = Unmanaged<CFArray>.fromOpaque(langsPtr).takeUnretainedValue() as? [String],
-           let lang = langs.first
-        {
+           let lang = langs.first {
             switch lang {
             // East Asian
             case "ja": return "あ"
@@ -150,20 +134,20 @@ final class InputSourceObserver {
             case "ko": return "한"
             // Southeast Asian (ASEAN)
             case "th": return "ก"
-            case "km": return "ក" // Khmer/Cambodian
-            case "lo": return "ກ" // Lao
-            case "my": return "က" // Myanmar/Burmese
+            case "km": return "ក"  // Khmer/Cambodian
+            case "lo": return "ກ"  // Lao
+            case "my": return "က"  // Myanmar/Burmese
             // South Asian
-            case "hi", "mr", "ne", "sa": return "अ" // Hindi, Marathi, Nepali, Sanskrit
-            case "bn": return "অ" // Bengali/Bangla
-            case "ta": return "அ" // Tamil
+            case "hi", "mr", "ne", "sa": return "अ"  // Hindi, Marathi, Nepali, Sanskrit
+            case "bn": return "অ"  // Bengali/Bangla
+            case "ta": return "அ"  // Tamil
             // Other common
-            case "vi": return "E" // Vietnamese input source = Gõ Nhanh disabled
+            case "vi": return "E"  // Vietnamese input source = Gõ Nhanh disabled
             case "ru": return "Р"
             case "ar": return "ع"
             case "he": return "א"
             case "el": return "Ω"
-            case "fa", "ur": return "ف" // Persian, Urdu
+            case "fa", "ur": return "ف"  // Persian, Urdu
             default: break
             }
         }
@@ -183,7 +167,7 @@ final class InputSourceObserver {
 // MARK: - C Callback
 
 private let inputSourceCallback: CFNotificationCallback = { _, observer, _, _, _ in
-    guard let observer else { return }
+    guard let observer = observer else { return }
     let instance = Unmanaged<InputSourceObserver>.fromOpaque(observer).takeUnretainedValue()
     DispatchQueue.main.async {
         instance.handleChange()

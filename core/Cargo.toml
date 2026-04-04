@@ -12,7 +12,7 @@ name = "gonhanh_core"
 crate-type = ["staticlib", "cdylib", "rlib"]  # Add rlib for tests
 
 [dependencies]
-# No external dependencies - using std::collections::HashSet for dictionary lookup
+# Minimal dependencies for core engine
 
 [dev-dependencies]
 rstest = "0.18"
@@ -24,9 +24,3 @@ lto = true               # Link-time optimization
 codegen-units = 1        # Better optimization
 strip = true             # Strip symbols
 panic = "abort"          # Smaller binary
-
-[target.x86_64-pc-windows-msvc]
-rustflags = ["-C", "target-feature=+crt-static"]
-
-[target.aarch64-pc-windows-msvc]
-rustflags = ["-C", "target-feature=+crt-static"]

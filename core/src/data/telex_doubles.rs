@@ -1,7 +1,7 @@
 //! English words containing Telex patterns that should auto-restore.
 //! Binary search O(log n) lookup.
 
-pub static WORDS: [&str; 10021] = [
+pub static WORDS: [&str; 10022] = [
     "aa",
     "aaaa",
     "aaai",
@@ -5788,6 +5788,7 @@ pub static WORDS: [&str; 10021] = [
     "misdeeds",
     "misr",
     "miss",
+    "missa",
     "missal",
     "missed",
     "missense",

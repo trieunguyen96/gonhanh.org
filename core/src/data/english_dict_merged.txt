@@ -2153,6 +2153,7 @@ budding
 buddy
 budget
 budgets
+buf
 buff
 buffa
 buffalo
@@ -6181,7 +6182,6 @@ follow
 followed
 following
 follows
-fomo
 fondness
 font
 fonts
@@ -9152,6 +9152,7 @@ leo
 leon
 leonard
 leone
+les
 lesbian
 lesbians
 leslie
@@ -9737,6 +9738,7 @@ martin
 marvel
 mary
 maryland
+mas
 mask
 mason
 masood
@@ -9932,7 +9934,6 @@ melbourne
 melee
 melissa
 mem
-meme
 member
 members
 membership
@@ -10175,6 +10176,7 @@ misdeed
 misdeeds
 miss
 miss.
+missa
 missal
 missed
 missense
@@ -10268,7 +10270,6 @@ moment
 moments
 momentum
 moms
-momo
 mon
 monaco
 moncrieff
@@ -11541,6 +11542,7 @@ partnerships
 partook
 parts
 party
+pas
 paso
 pass
 pass'd
@@ -13821,6 +13823,7 @@ sarah
 sargasso
 sarnoff
 sarris
+sas
 saskatchewan
 saskatoon
 sass

@@ -1,7 +1,7 @@
-import AppKit
-import Combine
 import SwiftUI
 import UniformTypeIdentifiers
+import Combine
+import AppKit
 
 // MARK: - Sound Manager
 
@@ -36,16 +36,23 @@ class SoundManager {
 
 enum NavigationPage: String, CaseIterable {
     case settings = "Cài đặt"
-    case advanced = "Nâng cao"
     case about = "Giới thiệu"
 
     var icon: String {
         switch self {
-        case .settings: "gearshape"
-        case .advanced: "wrench.and.screwdriver"
-        case .about: "bolt.fill"
+        case .settings: return "gearshape"
+        case .about: return "bolt.fill"
         }
     }
+}
+
+// MARK: - Update Status
+
+enum UpdateStatus: Equatable {
+    case idle, checking, upToDate, available(String), error
+
+    var isChecking: Bool { if case .checking = self { return true }; return false }
+    var isAvailable: Bool { if case .available = self { return true }; return false }
 }
 
 // MARK: - App State
@@ -55,6 +62,7 @@ class AppState: ObservableObject {
 
     private var isSilentUpdate = false
     private var cancellables = Set<AnyCancellable>()
+    private var launchAtLoginTimer: Timer?
 
     @Published var isEnabled: Bool {
         didSet {
@@ -78,9 +86,8 @@ class AppState: ObservableObject {
 
     @Published var currentMethod: InputMode {
         didSet {
-            RustBridge.setMethod(currentMethod.rawValue)
-            guard !isSilentUpdate else { return }
             UserDefaults.standard.set(currentMethod.rawValue, forKey: SettingsKey.method)
+            RustBridge.setMethod(currentMethod.rawValue)
         }
     }
 
@@ -165,35 +172,7 @@ class AppState: ObservableObject {
         }
     }
 
-    @Published var advancedMode: Bool = false {
-        didSet {
-            UserDefaults.standard.set(advancedMode, forKey: SettingsKey.advancedMode)
-        }
-    }
-
-    /// Disable Spotlight/Raycast panel detection for better performance
-    @Published var disablePanelDetection: Bool = false {
-        didSet {
-            UserDefaults.standard.set(disablePanelDetection, forKey: SettingsKey.disablePanelDetection)
-        }
-    }
-
-    @Published var restartOnClose: Bool = false {
-        didSet {
-            UserDefaults.standard.set(restartOnClose, forKey: SettingsKey.restartOnClose)
-        }
-    }
-
-    /// Per-app profiles: delay preset + method override per bundleId
-    @Published var perAppProfiles: [String: PerAppConfig] = [:] {
-        didSet {
-            if let data = try? JSONEncoder().encode(perAppProfiles) {
-                UserDefaults.standard.set(data, forKey: SettingsKey.perAppProfiles)
-            }
-            clearDetectionCache()
-        }
-    }
-
+    @Published var updateStatus: UpdateStatus = .idle
     @Published var shortcuts: [ShortcutItem] = []
     @Published var isLaunchAtLoginEnabled: Bool = false
     @Published var requiresManualLaunchAtLogin: Bool = false
@@ -222,14 +201,6 @@ class AppState: ObservableObject {
         }
         soundEnabled = defaults.bool(forKey: SettingsKey.soundEnabled)
         allowForeignConsonants = defaults.bool(forKey: SettingsKey.allowForeignConsonants)
-        advancedMode = defaults.bool(forKey: SettingsKey.advancedMode)
-        disablePanelDetection = defaults.bool(forKey: SettingsKey.disablePanelDetection)
-        restartOnClose = defaults.bool(forKey: SettingsKey.restartOnClose)
-        if let data = defaults.data(forKey: SettingsKey.perAppProfiles),
-           let profiles = try? JSONDecoder().decode([String: PerAppConfig].self, from: data)
-        {
-            perAppProfiles = profiles
-        }
 
         // Sync settings to Rust engine
         syncAllToEngine()
@@ -240,6 +211,7 @@ class AppState: ObservableObject {
         // Setup observers and services
         setupObservers()
         setupLaunchAtLoginMonitoring()
+        checkForUpdates()
     }
 
     private func syncAllToEngine() {
@@ -277,57 +249,9 @@ class AppState: ObservableObject {
         autoCapitalizeExcludedApps.remove(bundleId)
     }
 
-    /// Track global enabled state before per-app profile override, so we can restore on app switch
-    private var profileSavedEnabled: Bool?
-
-    /// Apply per-app profile override when switching apps.
-    ///
-    /// State machine: Tắt → saves enabled → Bật → force enable
-    ///                → No profile → restores from UserDefaults (ground truth)
-    ///
-    /// Runs BEFORE restorePerAppMode in handleAppSwitch. restorePerAppMode checks
-    /// profile.enabled to avoid re-enabling GN when profile has it disabled.
-    func applyPerAppProfile(bundleId: String) {
-        guard advancedMode, let profile = perAppProfiles[bundleId] else {
-            restoreProfileDefaults()
-            return
-        }
-
-        // No overrides — restore defaults
-        guard profile.enabledState != 0 else {
-            restoreProfileDefaults()
-            return
-        }
-
-        // "Tắt" — disable Vietnamese for this app
-        if profile.enabledState == -1 {
-            if profileSavedEnabled == nil { profileSavedEnabled = isEnabled }
-            RustBridge.setEnabled(false)
-            setEnabledSilently(false)
-            return
-        }
-
-        // "Bật" — force enable Vietnamese for this app
-        if profile.enabledState == 1 {
-            if profileSavedEnabled == nil { profileSavedEnabled = isEnabled }
-            RustBridge.setEnabled(true)
-            setEnabledSilently(true)
-        }
-    }
-
-    private func restoreProfileDefaults() {
-        if profileSavedEnabled != nil {
-            profileSavedEnabled = nil
-            let ground = UserDefaults.standard.bool(forKey: SettingsKey.enabled)
-            RustBridge.setEnabled(ground)
-            setEnabledSilently(ground)
-        }
-    }
-
     private func loadShortcuts() {
         if let data = UserDefaults.standard.data(forKey: SettingsKey.shortcuts),
-           let saved = try? JSONDecoder().decode([ShortcutItem].self, from: data)
-        {
+           let saved = try? JSONDecoder().decode([ShortcutItem].self, from: data) {
             shortcuts = saved
         } else {
             shortcuts = [
@@ -362,17 +286,12 @@ class AppState: ObservableObject {
 
         // Auto-enable unless user has explicitly disabled it
         let userDisabled = UserDefaults.standard.bool(forKey: SettingsKey.launchAtLoginUserDisabled)
-        if !userDisabled, !isLaunchAtLoginEnabled {
+        if !userDisabled && !isLaunchAtLoginEnabled {
             autoEnableLaunchAtLogin()
         }
 
-        // Replaces polling timer that caused backgroundtaskmanagementd spam (#351)
-        NotificationCenter.default.addObserver(
-            forName: NSApplication.didBecomeActiveNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.refreshLaunchAtLoginStatus()
+        launchAtLoginTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            DispatchQueue.main.async { self?.refreshLaunchAtLoginStatus() }
         }
     }
 
@@ -437,7 +356,7 @@ class AppState: ObservableObject {
 
     func savePerAppMode(bundleId: String, enabled: Bool) {
         var modes = UserDefaults.standard.dictionary(forKey: SettingsKey.perAppModes) as? [String: Bool] ?? [:]
-        modes[bundleId] = enabled // Store both ON and OFF so hasPerAppMode works correctly
+        modes[bundleId] = enabled  // Store both ON and OFF so hasPerAppMode works correctly
         UserDefaults.standard.set(modes, forKey: SettingsKey.perAppModes)
     }
 
@@ -457,13 +376,8 @@ class AppState: ObservableObject {
         isSilentUpdate = false
     }
 
-    func toggle() {
-        isEnabled.toggle()
-    }
-
-    func setMethod(_ method: InputMode) {
-        currentMethod = method
-    }
+    func toggle() { isEnabled.toggle() }
+    func setMethod(_ method: InputMode) { currentMethod = method }
 
     // MARK: - Shortcuts
 
@@ -475,11 +389,7 @@ class AppState: ObservableObject {
     func exportShortcuts() -> String {
         var lines = [";Gõ Nhanh - Bảng gõ tắt"]
         for shortcut in shortcuts where !shortcut.key.isEmpty {
-            // Issue #343: Escape newlines in export so format stays one-entry-per-line
-            let escapedValue = shortcut.value.replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "\n", with: "\\n")
-                .replacingOccurrences(of: "\r", with: "\\r")
-            lines.append("\(shortcut.key):\(escapedValue)")
+            lines.append("\(shortcut.key):\(shortcut.value)")
         }
         return lines.joined(separator: "\n")
     }
@@ -492,10 +402,8 @@ class AppState: ObservableObject {
             guard !trimmed.isEmpty, !trimmed.hasPrefix(";"),
                   let colonIndex = trimmed.firstIndex(of: ":") else { continue }
             let trigger = String(trimmed[..<colonIndex]).trimmingCharacters(in: .whitespaces)
-            let rawValue = String(trimmed[trimmed.index(after: colonIndex)...]).trimmingCharacters(in: .whitespaces)
+            let replacement = String(trimmed[trimmed.index(after: colonIndex)...]).trimmingCharacters(in: .whitespaces)
             guard !trigger.isEmpty else { continue }
-            // Issue #343: Unescape \\n → newline, \\\\ → backslash
-            let replacement = Self.unescapeShortcutValue(rawValue)
             if let idx = shortcuts.firstIndex(where: { $0.key == trigger }) {
                 shortcuts[idx].value = replacement
                 shortcuts[idx].isEnabled = true
@@ -507,27 +415,22 @@ class AppState: ObservableObject {
         return imported
     }
 
-    /// Unescape shortcut value: \\n → newline, \\\\ → backslash
-    private static func unescapeShortcutValue(_ value: String) -> String {
-        var result = ""
-        var chars = value.makeIterator()
-        while let ch = chars.next() {
-            if ch == "\\" {
-                if let next = chars.next() {
-                    switch next {
-                    case "n": result.append("\n")
-                    case "r": result.append("\r")
-                    case "\\": result.append("\\")
-                    default: result.append("\\"); result.append(next)
-                    }
-                } else {
-                    result.append("\\")
+    // MARK: - Updates
+
+    func checkForUpdates() {
+        updateStatus = .checking
+        let startTime = Date()
+        UpdateChecker.shared.checkForUpdates { [weak self] result in
+            let elapsed = Date().timeIntervalSince(startTime)
+            let delay = max(0, 1.5 - elapsed)
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                switch result {
+                case .available(let info): self?.updateStatus = .available(info.version)
+                case .upToDate: self?.updateStatus = .upToDate
+                case .error: self?.updateStatus = .error
                 }
-            } else {
-                result.append(ch)
             }
         }
-        return result
     }
 }
 
@@ -551,15 +454,14 @@ struct CardBackground: ViewModifier {
 }
 
 extension View {
-    func cardBackground() -> some View {
-        modifier(CardBackground())
-    }
+    func cardBackground() -> some View { modifier(CardBackground()) }
 }
 
 // MARK: - Reusable Components
 
 struct SettingsRow<Content: View>: View {
-    @ViewBuilder let content: Content
+    let content: Content
+    init(@ViewBuilder content: () -> Content) { self.content = content() }
     var body: some View {
         HStack { content }
             .padding(.horizontal, 12)
@@ -570,29 +472,20 @@ struct SettingsRow<Content: View>: View {
 struct SettingsToggleRow: View {
     let title: String
     let subtitle: String?
-    let indented: Bool
     @Binding var isOn: Bool
 
-    init(_ title: String, subtitle: String? = nil, indented: Bool = false, isOn: Binding<Bool>) {
+    init(_ title: String, subtitle: String? = nil, isOn: Binding<Bool>) {
         self.title = title
         self.subtitle = subtitle
-        self.indented = indented
-        _isOn = isOn
+        self._isOn = isOn
     }
 
     var body: some View {
         SettingsRow {
-            HStack(spacing: 6) {
-                if indented {
-                    Image(systemName: "arrow.turn.down.right")
-                        .font(.system(size: 10))
-                        .foregroundColor(Color(NSColor.tertiaryLabelColor))
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(size: 13))
-                    if let subtitle {
-                        Text(subtitle).font(.system(size: 11)).foregroundColor(Color(NSColor.secondaryLabelColor))
-                    }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 13))
+                if let subtitle = subtitle {
+                    Text(subtitle).font(.system(size: 11)).foregroundColor(Color(NSColor.secondaryLabelColor))
                 }
             }
             Spacer()
@@ -603,82 +496,14 @@ struct SettingsToggleRow: View {
 
 struct KeyCap: View {
     let text: String
-
-    private var displayText: String {
-        switch text {
-        // Modifiers
-        case "⌃": "⌃ control"
-        case "⌥": "⌥ option"
-        case "⇧": "⇧ shift"
-        case "⌘": "⌘ command"
-        case "fn": "fn"
-        // Special keys
-        case "Esc", "⎋": "⎋ esc"
-        case "Tab", "⇥": "⇥ tab"
-        case "Space", "␣": "␣ space"
-        case "Return", "↩": "↩ return"
-        case "Delete", "⌫": "⌫ delete"
-        default: text
-        }
-    }
-
     var body: some View {
-        Text(displayText)
+        Text(text)
             .font(.system(size: 11, weight: .medium))
             .foregroundColor(Color(NSColor.secondaryLabelColor))
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
             .background(RoundedRectangle(cornerRadius: 4).fill(Color(NSColor.controlBackgroundColor).opacity(0.8)))
             .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color(NSColor.separatorColor).opacity(0.5), lineWidth: 0.5))
-    }
-}
-
-// MARK: - Sheet Components
-
-struct SheetHeader: View {
-    let title: String
-    let subtitle: String?
-
-    init(_ title: String, subtitle: String? = nil) {
-        self.title = title
-        self.subtitle = subtitle
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(.system(size: 15, weight: .semibold))
-            if let subtitle {
-                Text(subtitle).font(.system(size: 11)).foregroundColor(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
-    }
-}
-
-struct SheetToolbar<Actions: View>: View {
-    @Environment(\.dismiss) private var dismiss
-    let actions: Actions?
-
-    init(@ViewBuilder actions: () -> Actions) {
-        self.actions = actions()
-    }
-
-    init() where Actions == EmptyView {
-        actions = nil
-    }
-
-    var body: some View {
-        HStack(spacing: 12) {
-            if let actions { actions }
-            Spacer()
-            Button("Xong") { dismiss() }
-                .keyboardShortcut(.escape, modifiers: [])
-        }
-        .font(.system(size: 12))
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
     }
 }
 
@@ -696,20 +521,15 @@ struct ClickableTextField: NSViewRepresentable {
         return textField
     }
 
-    func updateNSView(_ nsView: NSTextField, context _: Context) {
+    func updateNSView(_ nsView: NSTextField, context: Context) {
         if nsView.stringValue != text { nsView.stringValue = text }
     }
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(self)
-    }
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     class Coordinator: NSObject, NSTextFieldDelegate {
         var parent: ClickableTextField
-        init(_ parent: ClickableTextField) {
-            self.parent = parent
-        }
-
+        init(_ parent: ClickableTextField) { self.parent = parent }
         func controlTextDidChange(_ obj: Notification) {
             guard let textField = obj.object as? NSTextField else { return }
             parent.text = textField.stringValue
@@ -737,7 +557,7 @@ struct VisualEffectBackground: NSViewRepresentable {
     var material: NSVisualEffectView.Material = .sidebar
     var blendingMode: NSVisualEffectView.BlendingMode = .behindWindow
 
-    func makeNSView(context _: Context) -> NSVisualEffectView {
+    func makeNSView(context: Context) -> NSVisualEffectView {
         let view = NSVisualEffectView()
         view.material = material
         view.blendingMode = blendingMode
@@ -745,7 +565,7 @@ struct VisualEffectBackground: NSViewRepresentable {
         return view
     }
 
-    func updateNSView(_ nsView: NSVisualEffectView, context _: Context) {
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
         nsView.material = material
         nsView.blendingMode = blendingMode
     }
@@ -780,9 +600,6 @@ struct MainSettingsView: View {
         .onReceive(NotificationCenter.default.publisher(for: .showSettingsPage)) { notification in
             if let page = notification.object as? NavigationPage { selectedPage = page }
         }
-        .onChange(of: appState.advancedMode) { newValue in
-            if !newValue, selectedPage == .advanced { selectedPage = .settings }
-        }
     }
 
     // MARK: - Sidebar
@@ -792,14 +609,14 @@ struct MainSettingsView: View {
             VStack(spacing: 12) {
                 Image(nsImage: AppMetadata.logo).resizable().frame(width: 96, height: 96)
                 Text(AppMetadata.name).font(.system(size: 20, weight: .bold))
-                UpdateBadgeView()
+                UpdateBadgeView(status: appState.updateStatus) { appState.checkForUpdates() }
             }
             .padding(.top, 40)
 
             Spacer()
 
             VStack(spacing: 4) {
-                ForEach(NavigationPage.allCases.filter { $0 != .advanced || appState.advancedMode }, id: \.self) { page in
+                ForEach(NavigationPage.allCases, id: \.self) { page in
                     NavButton(page: page, isSelected: selectedPage == page) { selectedPage = page }
                 }
             }
@@ -818,9 +635,6 @@ struct MainSettingsView: View {
                 SettingsPageView(appState: appState).padding(28)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        case .advanced:
-            AdvancedSettingsView(appState: appState).padding(28)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .about:
             AboutPageView().padding(28).frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -830,31 +644,44 @@ struct MainSettingsView: View {
 // MARK: - Update Badge
 
 struct UpdateBadgeView: View {
-    @ObservedObject private var updateManager = UpdateManager.shared
+    let status: UpdateStatus
+    let onCheck: () -> Void
     @State private var hovered = false
     @State private var rotation: Double = 0
+
+    private var statusText: String? {
+        switch status {
+        case .idle: return nil
+        case .checking: return "Kiểm tra"
+        case .upToDate: return "Mới nhất"
+        case .available: return "Cập nhật"
+        case .error: return "Thất bại"
+        }
+    }
+
+    private var statusIcon: (name: String, color: Color)? {
+        switch status {
+        case .upToDate: return ("checkmark.circle.fill", .green)
+        case .available: return ("arrow.up.circle.fill", .orange)
+        case .error: return ("exclamationmark.triangle.fill", .orange)
+        default: return nil
+        }
+    }
 
     var body: some View {
         HStack(spacing: 3) {
             Text("v\(AppMetadata.version)")
-            if updateManager.isChecking {
+            if status.isChecking {
                 Image(systemName: "arrow.clockwise.circle.fill")
                     .font(.system(size: 12))
                     .foregroundColor(.secondary)
                     .rotationEffect(.degrees(rotation))
                     .onAppear { withAnimation(.linear(duration: 1).repeatForever(autoreverses: false)) { rotation = 360 } }
                     .onDisappear { rotation = 0 }
-                Text("Kiểm tra")
-            } else if updateManager.isReadyToInstall {
-                Image(systemName: "arrow.uturn.forward.circle.fill").font(.system(size: 12)).foregroundColor(.orange)
-                Text("Khởi động lại")
-            } else if updateManager.updateAvailable {
-                Image(systemName: "arrow.down.circle.fill").font(.system(size: 12)).foregroundColor(.blue)
-                Text("Đang tải...")
-            } else {
-                Image(systemName: "checkmark.circle.fill").font(.system(size: 12)).foregroundColor(.green)
-                Text("Mới nhất")
+            } else if let icon = statusIcon {
+                Image(systemName: icon.name).font(.system(size: 12)).foregroundColor(icon.color)
             }
+            if let text = statusText { Text(text) }
         }
         .font(.system(size: 11))
         .foregroundColor(Color(NSColor.tertiaryLabelColor))
@@ -863,14 +690,16 @@ struct UpdateBadgeView: View {
         .background(Capsule().fill(hovered ? Color(NSColor.controlBackgroundColor).opacity(0.5) : Color.clear))
         .onHover { h in
             hovered = h
-            if h { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+            if status.isAvailable { if h { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
         }
         .onTapGesture {
-            if updateManager.isReadyToInstall {
-                updateManager.restartToUpdate()
-            } else {
-                updateManager.checkForUpdatesManually()
-            }
+            guard !status.isChecking else { return }
+            if status.isAvailable {
+                if case .available(let info) = UpdateManager.shared.state {
+                    UpdateManager.shared.downloadUpdate(info)
+                    NotificationCenter.default.post(name: .showUpdateWindow, object: nil)
+                }
+            } else { onCheck() }
         }
     }
 }
@@ -899,7 +728,7 @@ struct NavButton: View {
         .background(
             RoundedRectangle(cornerRadius: 8)
                 .fill(isSelected ? Color(NSColor.controlBackgroundColor).opacity(0.6) :
-                    hovered ? Color(NSColor.controlBackgroundColor).opacity(0.4) : Color.clear)
+                      hovered ? Color(NSColor.controlBackgroundColor).opacity(0.4) : Color.clear)
         )
         .contentShape(Rectangle())
         .onHover { hovered = $0 }
@@ -917,60 +746,54 @@ struct SettingsPageView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            // Bộ gõ
+            // Input method settings
             VStack(spacing: 0) {
                 SettingsToggleRow("Bộ gõ tiếng Việt", isOn: $appState.isEnabled)
                 Divider().padding(.leading, 12)
                 inputMethodRow
                 if appState.currentMethod == .telex {
                     Divider().padding(.leading, 12)
-                    SettingsToggleRow("Gõ W thành Ư", indented: true, isOn: $appState.autoWShortcut)
+                    SettingsToggleRow("Gõ W thành Ư ở đầu từ", isOn: $appState.autoWShortcut)
                     Divider().padding(.leading, 12)
-                    SettingsToggleRow("Gõ [ ] thành Ơ Ư", indented: true, isOn: $appState.bracketShortcut)
-                    Divider().padding(.leading, 12)
-                    englishAutoRestoreRow
+                    SettingsToggleRow("Gõ ] thành Ư, [ thành Ơ", isOn: $appState.bracketShortcut)
                 }
             }
             .cardBackground()
 
-            // Phím tắt
+            // Toggle shortcut & text expansion
             VStack(spacing: 0) {
                 ShortcutRecorderRow(shortcut: $appState.toggleShortcut,
                                     isRecording: $isRecordingShortcut)
+                Divider().padding(.leading, 12)
+                shortcutsRow
+            }
+            .cardBackground()
+
+            // Other options
+            VStack(spacing: 0) {
+                LaunchAtLoginToggleRow(appState: appState)
+                Divider().padding(.leading, 12)
+                SettingsToggleRow("Tự chuyển chế độ theo ứng dụng", isOn: $appState.perAppModeEnabled)
+                Divider().padding(.leading, 12)
+                englishAutoRestoreRow
+            }
+            .cardBackground()
+
+            // Sound, tone and restore shortcut options
+            VStack(spacing: 0) {
+                SettingsToggleRow("Âm thanh chuyển ngôn ngữ", isOn: $appState.soundEnabled)
+                Divider().padding(.leading, 12)
+                SettingsToggleRow("Đặt dấu kiểu mới (oà, uý)", isOn: $appState.modernTone)
+                Divider().padding(.leading, 12)
+                AutoCapitalizeRow(appState: appState)
+                Divider().padding(.leading, 12)
+                SettingsToggleRow("Cho phép z, w, j, f làm phụ âm", isOn: $appState.allowForeignConsonants)
                 Divider().padding(.leading, 12)
                 RestoreShortcutRecorderRow(
                     shortcut: $appState.restoreShortcut,
                     isEnabled: $appState.restoreShortcutEnabled,
                     isRecording: $isRecordingRestoreShortcut
                 )
-            }
-            .cardBackground()
-
-            // Quy tắc gõ
-            VStack(spacing: 0) {
-                SettingsToggleRow("Đặt dấu kiểu mới", subtitle: "oà thay vì òa, uý thay vì úy", isOn: $appState.modernTone)
-                Divider().padding(.leading, 12)
-                SettingsToggleRow("Cho phép phụ âm ngoại", subtitle: "z, w, j, f làm phụ âm đầu", isOn: $appState.allowForeignConsonants)
-                Divider().padding(.leading, 12)
-                AutoCapitalizeRow(appState: appState)
-            }
-            .cardBackground()
-
-            // Mở rộng
-            VStack(spacing: 0) {
-                shortcutsRow
-                Divider().padding(.leading, 12)
-                SettingsToggleRow("Nhớ trạng thái theo app", subtitle: "Tự bật/tắt khi chuyển ứng dụng", isOn: $appState.perAppModeEnabled)
-                Divider().padding(.leading, 12)
-                SettingsToggleRow("Âm thanh khi bật/tắt", isOn: $appState.soundEnabled)
-            }
-            .cardBackground()
-
-            // Hệ thống
-            VStack(spacing: 0) {
-                LaunchAtLoginToggleRow(appState: appState)
-                Divider().padding(.leading, 12)
-                SettingsToggleRow("Hiển thị cài đặt nâng cao", isOn: $appState.advancedMode)
             }
             .cardBackground()
 
@@ -992,7 +815,22 @@ struct SettingsPageView: View {
     }
 
     private var englishAutoRestoreRow: some View {
-        SettingsToggleRow("Tự khôi phục tiếng Anh", indented: true, isOn: $appState.englishAutoRestore)
+        SettingsRow {
+            HStack(spacing: 6) {
+                Text("Tự khôi phục từ tiếng Anh").font(.system(size: 13))
+                Link(destination: URL(string: "https://github.com/khaphanspace/gonhanh.org/issues/26")!) {
+                    Text("Beta · Góp ý")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(Color.orange))
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer()
+            Toggle("", isOn: $appState.englishAutoRestore).toggleStyle(.switch).labelsHidden()
+        }
     }
 
     private var shortcutsRow: some View {
@@ -1004,53 +842,43 @@ struct SettingsPageView: View {
 
 struct ShortcutsSheet: View {
     @ObservedObject var appState: AppState
+    @Environment(\.dismiss) private var dismiss
 
     // Form state
     @State private var formKey: String = ""
     @State private var formValue: String = ""
-    @State private var editingId: UUID? = nil // For form editing
-    @State private var selectedIds: Set<UUID> = [] // For table multi-selection
+    @State private var editingId: UUID? = nil  // For form editing
+    @State private var selectedIds: Set<UUID> = []  // For table multi-selection
 
-    private var isEditing: Bool {
-        editingId != nil
-    }
-
-    private var canSave: Bool {
-        !formKey.isEmpty && !formValue.isEmpty
-    }
-
-    private var subtitle: String {
-        let enabled = appState.shortcuts.filter(\.isEnabled).count
-        let total = appState.shortcuts.count
-        return "\(total) mục · \(enabled) đang bật"
-    }
+    private var isEditing: Bool { editingId != nil }
+    private var canSave: Bool { !formKey.isEmpty && !formValue.isEmpty }
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader("Bảng gõ tắt", subtitle: subtitle)
+            header
             Divider()
             formSection
             Divider()
             tableContent
             Divider()
-            SheetToolbar {
-                Button(action: importShortcuts) {
-                    Label("Nhập", systemImage: "square.and.arrow.down")
-                }
-                .buttonStyle(.borderless)
-                Button(action: exportShortcuts) {
-                    Label("Xuất", systemImage: "square.and.arrow.up")
-                }
-                .buttonStyle(.borderless)
-                .disabled(appState.shortcuts.isEmpty)
-            }
+            toolbar
         }
-        .frame(width: 460, height: 400)
+        .frame(width: 480, height: 420)
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Từ viết tắt").font(.system(size: 15, weight: .semibold))
+            Text("\(appState.shortcuts.count) mục").font(.system(size: 11)).foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
     }
 
     private var formSection: some View {
         VStack(spacing: 10) {
-            HStack(alignment: .top, spacing: 10) {
+            HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Viết tắt").font(.system(size: 11)).foregroundColor(.secondary)
                     TextField("vd: tphcm", text: $formKey)
@@ -1058,28 +886,9 @@ struct ShortcutsSheet: View {
                         .frame(width: 120)
                 }
                 VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 4) {
-                        Text("Nội dung").font(.system(size: 11)).foregroundColor(.secondary)
-                        Text("(⌥↩ xuống dòng)").font(.system(size: 10)).foregroundColor(Color(NSColor.tertiaryLabelColor))
-                    }
-                    // Issue #343: TextEditor for multiline replacement (supports newlines)
-                    TextEditor(text: $formValue)
-                        .font(.system(size: 13))
-                        .frame(height: 44)
-                        .scrollContentBackground(.hidden)
-                        .padding(4)
-                        .background(RoundedRectangle(cornerRadius: 5).fill(Color(NSColor.textBackgroundColor)))
-                        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color(NSColor.separatorColor).opacity(0.5), lineWidth: 0.5))
-                        .overlay(alignment: .topLeading) {
-                            if formValue.isEmpty {
-                                Text("vd: Thành phố Hồ Chí Minh")
-                                    .font(.system(size: 13))
-                                    .foregroundColor(Color(NSColor.placeholderTextColor))
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 6)
-                                    .allowsHitTesting(false)
-                            }
-                        }
+                    Text("Nội dung").font(.system(size: 11)).foregroundColor(.secondary)
+                    TextField("vd: Thành phố Hồ Chí Minh", text: $formValue)
+                        .textFieldStyle(.roundedBorder)
                 }
             }
             HStack(spacing: 8) {
@@ -1132,8 +941,7 @@ struct ShortcutsSheet: View {
                 .width(min: 80, ideal: 100, max: 140)
 
                 TableColumn("Nội dung") { item in
-                    // Issue #343: Show multiline indicator, display first line in table
-                    Text(item.value.contains("\n") ? item.value.replacingOccurrences(of: "\n", with: " ↵ ") : item.value)
+                    Text(item.value)
                         .font(.system(size: 12))
                         .foregroundColor(item.isEnabled ? .primary : .secondary)
                         .lineLimit(1)
@@ -1149,14 +957,32 @@ struct ShortcutsSheet: View {
             .onChange(of: selectedIds) { newSelection in
                 // Load single selection into form for editing
                 if newSelection.count == 1, let id = newSelection.first,
-                   let item = appState.shortcuts.first(where: { $0.id == id })
-                {
+                   let item = appState.shortcuts.first(where: { $0.id == id }) {
                     selectItem(item)
                 } else {
                     clearForm()
                 }
             }
         }
+    }
+
+    private var toolbar: some View {
+        HStack(spacing: 12) {
+            Button(action: importShortcuts) {
+                Label("Nhập", systemImage: "square.and.arrow.down")
+            }
+            .buttonStyle(.borderless)
+            Button(action: exportShortcuts) {
+                Label("Xuất", systemImage: "square.and.arrow.up")
+            }
+            .buttonStyle(.borderless).disabled(appState.shortcuts.isEmpty)
+            Spacer()
+            Button("Xong") { dismiss() }
+                .keyboardShortcut(.escape, modifiers: [])
+        }
+        .font(.system(size: 12))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
     }
 
     private func selectItem(_ item: ShortcutItem) {
@@ -1246,28 +1072,23 @@ struct AboutPageView: View {
                 Image(nsImage: AppMetadata.logo).resizable().frame(width: 80, height: 80)
                 Text(AppMetadata.name).font(.system(size: 20, weight: .bold))
                 Text("Bộ gõ tiếng Việt nhanh và nhẹ").font(.system(size: 13)).foregroundColor(Color(NSColor.secondaryLabelColor))
-                Text("Phiên bản v\(AppMetadata.version)").font(.system(size: 12)).foregroundColor(Color(NSColor.tertiaryLabelColor))
+                Text("Phiên bản \(AppMetadata.version)").font(.system(size: 12)).foregroundColor(Color(NSColor.tertiaryLabelColor))
             }
             HStack(spacing: 12) {
-                AboutLink(icon: "heart.fill", title: "Ủng hộ", url: AppMetadata.sponsorURL, iconColor: .pink)
-                AboutLink(icon: "ant", title: "Báo lỗi", url: AppMetadata.issuesURL)
                 AboutLink(icon: "chevron.left.forwardslash.chevron.right", title: "GitHub", url: AppMetadata.repository)
-            }
-            // Launch platform badges
-            HStack(spacing: 8) {
-                PlatformBadge(title: "Unikorn", icon: "star.fill", url: "https://unikorn.vn/p/gonhanh?ref=gonhanh")
-                PlatformBadge(title: "J2TEAM", icon: "bolt.fill", url: "https://launch.j2team.dev/products/go-nhanh?ref=gonhanh")
+                AboutLink(icon: "ant", title: "Báo lỗi", url: AppMetadata.issuesURL)
+                AboutLink(icon: "heart", title: "Ủng hộ", url: AppMetadata.sponsorURL)
             }
             Spacer()
-            HStack(spacing: 4) {
-                Text("Phát triển bởi").foregroundColor(Color(NSColor.tertiaryLabelColor))
-                AuthorLink(name: AppMetadata.author, url: AppMetadata.authorLinkedin)
-                Text("và").foregroundColor(Color(NSColor.tertiaryLabelColor))
-                AuthorLink(name: "Cộng đồng", url: "\(AppMetadata.repository)/blob/main/CONTRIBUTORS.md")
-                Text("với tất cả ❤️").foregroundColor(Color(NSColor.tertiaryLabelColor))
+            VStack(spacing: 8) {
+                HStack(spacing: 4) {
+                    Text("Phát triển bởi").foregroundColor(Color(NSColor.tertiaryLabelColor))
+                    AuthorLink(name: AppMetadata.author, url: AppMetadata.authorLinkedin)
+                }
+                .font(.system(size: 12))
+                Text("Từ Việt Nam với ❤️").font(.system(size: 11)).foregroundColor(Color(NSColor.tertiaryLabelColor))
             }
-            .font(.system(size: 12))
-            .padding(.bottom, 12)
+            .padding(.bottom, 8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -1277,15 +1098,12 @@ struct AboutLink: View {
     let icon: String
     let title: String
     let url: String
-    var iconColor: Color?
     @State private var hovered = false
 
     var body: some View {
         Link(destination: URL(string: url)!) {
             VStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 18))
-                    .foregroundColor(iconColor)
+                Image(systemName: icon).font(.system(size: 18))
                 Text(title).font(.system(size: 11))
             }
             .frame(width: 80, height: 60)
@@ -1311,38 +1129,6 @@ struct AuthorLink: View {
     }
 }
 
-struct PlatformBadge: View {
-    let title: String
-    let icon: String
-    let url: String
-    @Environment(\.colorScheme) private var colorScheme
-    @State private var hovered = false
-
-    var body: some View {
-        Link(destination: URL(string: url)!) {
-            HStack(spacing: 5) {
-                Image(systemName: icon)
-                    .font(.system(size: 10))
-                Text(title)
-                    .font(.system(size: 10, weight: .medium))
-                Image(systemName: "arrowtriangle.up.fill")
-                    .font(.system(size: 6))
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
-            )
-            .opacity(hovered ? 0.7 : 1.0)
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(.secondary)
-        .onHover { hovered = $0 }
-    }
-}
-
 // MARK: - Shortcut Recorder
 
 private let systemShortcuts: Set<String> = [
@@ -1359,14 +1145,12 @@ struct ShortcutRecorderRow: View {
     @State private var cancelledObserver: NSObjectProtocol?
     @State private var windowObserver: NSObjectProtocol?
 
-    private var hasConflict: Bool {
-        systemShortcuts.contains(shortcut.displayParts.joined())
-    }
+    private var hasConflict: Bool { systemShortcuts.contains(shortcut.displayParts.joined()) }
 
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Bật/tắt bộ gõ").font(.system(size: 13))
+                Text("Phím tắt bật/tắt").font(.system(size: 13))
                 Text("Nhấn để thay đổi")
                     .font(.system(size: 11))
                     .foregroundColor(Color(NSColor.secondaryLabelColor))
@@ -1383,6 +1167,7 @@ struct ShortcutRecorderRow: View {
         .onDisappear { stopRecording() }
     }
 
+    @ViewBuilder
     private var shortcutDisplay: some View {
         HStack(spacing: 4) {
             if isRecording {
@@ -1439,7 +1224,7 @@ struct RestoreShortcutRecorderRow: View {
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Hoàn tác dấu vừa gõ").font(.system(size: 13))
+                Text("Phím hoàn tác dấu").font(.system(size: 13))
                 Text("Nhấn để thay đổi")
                     .font(.system(size: 11))
                     .foregroundColor(Color(NSColor.secondaryLabelColor))
@@ -1456,9 +1241,9 @@ struct RestoreShortcutRecorderRow: View {
         .padding(.vertical, 10)
         .background((hovered || isRecording) ? Color(NSColor.controlBackgroundColor).opacity(0.3) : .clear)
         .contentShape(Rectangle())
-        .onHover { hovered = isEnabled && $0 } // Only hover effect when enabled
+        .onHover { hovered = isEnabled && $0 }  // Only hover effect when enabled
         .onTapGesture {
-            guard isEnabled else { return } // Disable click when OFF
+            guard isEnabled else { return }  // Disable click when OFF
             isRecording ? stopRecording() : startRecording()
         }
         .onDisappear { stopRecording() }
@@ -1467,6 +1252,7 @@ struct RestoreShortcutRecorderRow: View {
         }
     }
 
+    @ViewBuilder
     private var shortcutDisplay: some View {
         HStack(spacing: 4) {
             if isRecording {
@@ -1491,7 +1277,7 @@ struct RestoreShortcutRecorderRow: View {
         }
         cancelledObserver = NotificationCenter.default.addObserver(forName: .shortcutRecordingCancelled, object: nil, queue: .main) { _ in stopRecording() }
         windowObserver = NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: nil, queue: .main) { _ in stopRecording() }
-        startRestoreShortcutRecording() // Use restore-specific recording that allows single keys
+        startRestoreShortcutRecording()  // Use restore-specific recording that allows single keys
     }
 
     private func stopRecording() {
@@ -1516,8 +1302,8 @@ struct ShortcutsRowView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Bảng gõ tắt").font(.system(size: 13))
                 Text(appState.shortcuts.isEmpty
-                    ? "Chưa có từ viết tắt"
-                    : "\(appState.shortcuts.filter(\.isEnabled).count)/\(appState.shortcuts.count) đang bật")
+                     ? "Chưa có từ viết tắt"
+                     : "\(appState.shortcuts.filter(\.isEnabled).count)/\(appState.shortcuts.count) đang bật")
                     .font(.system(size: 11))
                     .foregroundColor(Color(NSColor.secondaryLabelColor))
             }
@@ -1545,13 +1331,18 @@ struct AutoCapitalizeRow: View {
     var body: some View {
         SettingsRow {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Tự viết hoa đầu câu").font(.system(size: 13))
+                Text("Tự động viết hoa đầu câu").font(.system(size: 13))
                 if appState.autoCapitalize {
-                    Text(subtitleText)
-                        .font(.system(size: 11))
-                        .foregroundColor(hovered ? Color(NSColor.labelColor) : Color(NSColor.secondaryLabelColor))
-                        .onHover { hovered = $0 }
-                        .onTapGesture { showSheet = true }
+                    HStack(spacing: 4) {
+                        Text(subtitleText)
+                            .font(.system(size: 11))
+                            .foregroundColor(hovered ? .accentColor : Color(NSColor.secondaryLabelColor))
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(hovered ? .accentColor : Color(NSColor.tertiaryLabelColor))
+                    }
+                    .onHover { hovered = $0 }
+                    .onTapGesture { showSheet = true }
                 }
             }
             Spacer()
@@ -1564,9 +1355,9 @@ struct AutoCapitalizeRow: View {
 
     private var subtitleText: String {
         if appState.autoCapitalizeExcludedApps.isEmpty {
-            "Loại trừ ứng dụng"
+            return "Loại trừ ứng dụng"
         } else {
-            "Loại trừ \(appState.autoCapitalizeExcludedApps.count) ứng dụng"
+            return "Loại trừ \(appState.autoCapitalizeExcludedApps.count) ứng dụng"
         }
     }
 }
@@ -1575,103 +1366,134 @@ struct AutoCapitalizeRow: View {
 
 struct AutoCapitalizeExcludedAppsSheet: View {
     @ObservedObject var appState: AppState
-    @State private var allApps: [AppToggleItem] = []
-
-    private var subtitle: String {
-        let count = appState.autoCapitalizeExcludedApps.count
-        return count == 0 ? "Chưa có ứng dụng nào" : "\(count) ứng dụng đang loại trừ"
-    }
+    @Environment(\.dismiss) private var dismiss
+    @State private var runningApps: [RunningAppInfo] = []
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader("Loại trừ viết hoa", subtitle: subtitle)
-            Divider()
-            if allApps.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: "app.badge.checkmark")
-                        .font(.system(size: 28))
-                        .foregroundColor(.secondary)
-                    Text("Không có ứng dụng đang chạy")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List {
-                    ForEach(allApps, id: \.bundleId) { app in
-                        AppToggleRow(
-                            name: app.name,
-                            icon: app.icon,
-                            isExcluded: appState.autoCapitalizeExcludedApps.contains(app.bundleId)
-                        ) { isExcluded in
-                            if isExcluded {
-                                appState.excludeAppFromAutoCapitalize(app.bundleId)
-                            } else {
-                                appState.includeAppInAutoCapitalize(app.bundleId)
+            // Native-style header
+            Text("Loại trừ ứng dụng")
+                .font(.headline)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 16)
+                .padding(.bottom, 8)
+
+            // Native List with sections
+            List {
+                if !appState.autoCapitalizeExcludedApps.isEmpty {
+                    Section {
+                        ForEach(Array(appState.autoCapitalizeExcludedApps).sorted(), id: \.self) { bundleId in
+                            ExcludedAppRow(bundleId: bundleId, isExcluded: true) {
+                                withAnimation { appState.includeAppInAutoCapitalize(bundleId) }
+                                loadRunningApps()
                             }
                         }
+                        .onDelete { indexSet in
+                            let sorted = Array(appState.autoCapitalizeExcludedApps).sorted()
+                            for index in indexSet {
+                                appState.includeAppInAutoCapitalize(sorted[index])
+                            }
+                            loadRunningApps()
+                        }
+                    } header: {
+                        Text("Đang loại trừ")
                     }
                 }
-                .listStyle(.inset)
+
+                if !runningApps.isEmpty {
+                    Section {
+                        ForEach(runningApps, id: \.bundleId) { app in
+                            ExcludedAppRow(bundleId: app.bundleId, appName: app.name, appIcon: app.icon, isExcluded: false) {
+                                withAnimation { appState.excludeAppFromAutoCapitalize(app.bundleId) }
+                                loadRunningApps()
+                            }
+                        }
+                    } header: {
+                        Text("Ứng dụng đang chạy")
+                    }
+                }
+
+                if appState.autoCapitalizeExcludedApps.isEmpty && runningApps.isEmpty {
+                    Section {
+                        VStack(spacing: 8) {
+                            Image(systemName: "app.badge.checkmark")
+                                .font(.system(size: 28))
+                                .foregroundColor(.secondary)
+                            Text("Chưa có ứng dụng nào")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 20)
+                    }
+                }
             }
+            .listStyle(.inset)
+
             Divider()
-            SheetToolbar()
+
+            // Native button bar
+            HStack {
+                Spacer()
+                Button("Xong") { dismiss() }
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
         }
-        .frame(width: 460, height: 400)
-        .onAppear { loadApps() }
+        .frame(width: 420, height: 380)
+        .onAppear { loadRunningApps() }
     }
 
-    /// Load and sort apps only on appear - no re-sorting on toggle
-    private func loadApps() {
+    private func loadRunningApps() {
         let excluded = appState.autoCapitalizeExcludedApps
-
-        // Get running apps
-        var apps: [AppToggleItem] = NSWorkspace.shared.runningApplications
+        runningApps = NSWorkspace.shared.runningApplications
             .filter { $0.activationPolicy == .regular }
-            .compactMap { app -> AppToggleItem? in
+            .compactMap { app -> RunningAppInfo? in
                 guard let bundleId = app.bundleIdentifier,
+                      !excluded.contains(bundleId),
                       bundleId != Bundle.main.bundleIdentifier else { return nil }
-                return AppToggleItem(
+                return RunningAppInfo(
                     bundleId: bundleId,
                     name: app.localizedName ?? bundleId,
                     icon: app.icon
                 )
             }
-
-        // Add excluded apps not currently running
-        for bundleId in excluded where !apps.contains(where: { $0.bundleId == bundleId }) {
-            let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).first
-            let name = running?.localizedName ?? bundleId.components(separatedBy: ".").last ?? bundleId
-            apps.append(AppToggleItem(bundleId: bundleId, name: name, icon: running?.icon))
-        }
-
-        // Sort once: excluded first, then alphabetically
-        allApps = apps.sorted { a, b in
-            let aExcluded = excluded.contains(a.bundleId)
-            let bExcluded = excluded.contains(b.bundleId)
-            if aExcluded != bExcluded { return aExcluded }
-            return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
-        }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 }
 
-struct AppToggleItem {
+struct RunningAppInfo {
     let bundleId: String
     let name: String
     let icon: NSImage?
 }
 
-struct AppToggleRow: View {
-    let name: String
-    let icon: NSImage?
+struct ExcludedAppRow: View {
+    let bundleId: String
+    var appName: String?
+    var appIcon: NSImage?
     let isExcluded: Bool
-    let onToggle: (Bool) -> Void
+    let action: () -> Void
+
+    private var displayName: String {
+        if let name = appName { return name }
+        if let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).first {
+            return app.localizedName ?? bundleId
+        }
+        return bundleId.components(separatedBy: ".").last ?? bundleId
+    }
+
+    private var displayIcon: NSImage? {
+        if let icon = appIcon { return icon }
+        return NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).first?.icon
+    }
 
     var body: some View {
         HStack(spacing: 12) {
             // App icon
             Group {
-                if let icon {
+                if let icon = displayIcon {
                     Image(nsImage: icon).resizable()
                 } else {
                     Image(systemName: "app.fill")
@@ -1679,24 +1501,30 @@ struct AppToggleRow: View {
                         .foregroundColor(.secondary)
                 }
             }
-            .frame(width: 28, height: 28)
+            .frame(width: 32, height: 32)
 
-            // App name only
-            Text(name)
-                .font(.system(size: 13))
-                .lineLimit(1)
+            // App info
+            VStack(alignment: .leading, spacing: 2) {
+                Text(displayName)
+                    .font(.system(size: 13))
+                    .lineLimit(1)
+                Text(bundleId)
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
 
             Spacer()
 
-            // Toggle switch
-            Toggle("", isOn: Binding(
-                get: { isExcluded },
-                set: { onToggle($0) }
-            ))
-            .toggleStyle(.switch)
-            .labelsHidden()
+            // Action button
+            Button(action: action) {
+                Image(systemName: isExcluded ? "minus.circle.fill" : "plus.circle.fill")
+                    .font(.system(size: 18))
+                    .foregroundColor(isExcluded ? .red : .accentColor)
+            }
+            .buttonStyle(.plain)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
     }
 }
 

@@ -34,8 +34,6 @@ obj/
 # Build artifacts
 *.o
 *.so
-*.profraw
-*.profdata
 
 # IDE
 .vscode/
@@ -58,6 +56,4 @@ obj/
 plans/
 CLAUDE.md
 platforms/windows/build/
-
-refs/
 repomix-output.xml

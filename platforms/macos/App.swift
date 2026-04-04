@@ -13,7 +13,8 @@ struct GoNhanhApp: App {
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     var menuBar: MenuBarController?
-    func applicationDidFinishLaunching(_: Notification) {
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
         // Register default settings before anything else
         registerDefaultSettings()
 
@@ -24,9 +25,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         InputSourceObserver.shared.start()
     }
 
-    func applicationWillTerminate(_: Notification) {
-        // Cancel any pending restart-on-close (window may have closed during quit)
-        menuBar?.cancelPendingRestart()
+    func applicationWillTerminate(_ notification: Notification) {
         KeyboardHookManager.shared.stop()
         InputSourceObserver.shared.stop()
     }
@@ -40,11 +39,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             SettingsKey.bracketShortcut: false,
             SettingsKey.restoreShortcutEnabled: false,
             SettingsKey.modernTone: true,
-            SettingsKey.englishAutoRestore: true,
+            SettingsKey.englishAutoRestore: false,
             SettingsKey.autoCapitalize: false,
             SettingsKey.soundEnabled: false,
             SettingsKey.allowForeignConsonants: false,
-            SettingsKey.advancedMode: false,
         ])
     }
 }

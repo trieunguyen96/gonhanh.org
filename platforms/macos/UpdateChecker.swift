@@ -30,7 +30,7 @@ enum UpdateCheckResult {
 class UpdateChecker {
     static let shared = UpdateChecker()
 
-    /// Use /releases instead of /releases/latest to get highest version, not most recent publish
+    // Use /releases instead of /releases/latest to get highest version, not most recent publish
     private let githubAPIURL = "https://api.github.com/repos/khaphanspace/gonhanh.org/releases"
 
     private init() {}
@@ -47,7 +47,7 @@ class UpdateChecker {
         request.timeoutInterval = 10
 
         let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            if let error {
+            if let error = error {
                 DispatchQueue.main.async {
                     completion(.error("Network error: \(error.localizedDescription)"))
                 }
@@ -68,7 +68,7 @@ class UpdateChecker {
                 return
             }
 
-            guard let data else {
+            guard let data = data else {
                 DispatchQueue.main.async {
                     completion(.error("No data received"))
                 }
@@ -83,26 +83,26 @@ class UpdateChecker {
 
     private func parseResponse(data: Data, completion: @escaping (UpdateCheckResult) -> Void) {
         do {
+            // Parse as array of releases
             guard let releases = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
                 DispatchQueue.main.async { completion(.error("Invalid JSON format")) }
                 return
             }
 
             let currentVersion = AppMetadata.version
-            let includePrerelease = currentVersion.contains("pre")
 
-            // Find the highest version release
-            // Pre-release builds check pre-releases too; stable builds only check stable
+            // Find the highest version release (not draft/prerelease)
             var bestRelease: [String: Any]?
             var bestVersion = ""
 
             for release in releases {
                 guard let tagName = release["tag_name"] as? String,
-                      release["draft"] as? Bool != true else { continue }
-                if !includePrerelease, release["prerelease"] as? Bool == true { continue }
+                      release["draft"] as? Bool != true,
+                      release["prerelease"] as? Bool != true else { continue }
 
                 let version = tagName.hasPrefix("v") ? String(tagName.dropFirst()) : tagName
 
+                // Compare with current best
                 if bestVersion.isEmpty {
                     bestVersion = version
                     bestRelease = release
@@ -112,7 +112,7 @@ class UpdateChecker {
                             version_compare(bestPtr, verPtr)
                         }
                     }
-                    if cmp < 0 {
+                    if cmp < 0 { // version > bestVersion
                         bestVersion = version
                         bestRelease = release
                     }
@@ -143,8 +143,7 @@ class UpdateChecker {
                     if let name = asset["name"] as? String,
                        name.lowercased().hasSuffix(".dmg"),
                        let urlString = asset["browser_download_url"] as? String,
-                       let url = URL(string: urlString)
-                    {
+                       let url = URL(string: urlString) {
                         downloadURL = url
                         break
                     }
@@ -156,6 +155,7 @@ class UpdateChecker {
                 return
             }
 
+            // Parse metadata
             let releaseNotes = release["body"] as? String ?? ""
             var publishedAt: Date?
             if let publishedString = release["published_at"] as? String {
@@ -174,6 +174,16 @@ class UpdateChecker {
         } catch {
             DispatchQueue.main.async {
                 completion(.error("JSON parse error: \(error.localizedDescription)"))
+            }
+        }
+    }
+
+    /// Compare two version strings using Rust core
+    /// Returns: -1 if v1 < v2, 0 if equal, 1 if v1 > v2
+    func compareVersions(_ v1: String, _ v2: String) -> Int {
+        return v1.withCString { v1Ptr in
+            v2.withCString { v2Ptr in
+                Int(version_compare(v1Ptr, v2Ptr))
             }
         }
     }

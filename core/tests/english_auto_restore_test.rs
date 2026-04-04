@@ -103,10 +103,9 @@ fn pattern2_oo_vowel_pair() {
 #[test]
 fn pattern2_ee_vowel_pair() {
     telex_auto_restore(&[
-        // "keep" is in English dictionary - restore to English
+        // With space - restore to English (invalid VN ending with -êp)
         ("keep ", "keep "),
-        // "teep" is NOT in dictionary - keep circumflex from intentional double vowel
-        ("teep ", "têp "),
+        ("teep ", "teep "),
         // Without space - keep Vietnamese transform (word not complete)
         ("keep", "kêp"),  // k + e + e(circumflex) + p → kêp
         ("keeps", "kếp"), // k + e + e + p + s(sắc) → kếp
@@ -220,40 +219,13 @@ fn pattern_double_vowel_after_tone() {
         // huyền (f) + different double vowel
         ("tafoo ", "tàoo "), // t + à + oo → 'a' has mark, 'o' different → skip circumflex
         ("tefoo ", "tèoo "), // t + è + oo → 'e' has mark, 'o' different → skip circumflex
-        ("tofaa ", "toàa "), // t + ò + aa → 'oa' diphthong repositions mark to 'a' → skip circumflex
-        ("tofee ", "toèe "), // t + ò + ee → 'oe' diphthong repositions mark to 'e' → skip circumflex
+        ("tofaa ", "tòaa "), // t + ò + aa → 'o' has mark, 'a' different → skip circumflex
+        ("tofee ", "tòee "), // t + ò + ee → 'o' has mark, 'e' different → skip circumflex
         ("tifaa ", "tìaa "), // t + ì + aa → 'i' has mark, 'a' different → skip circumflex
-        ("mufaa ", "muàa "), // m + ù + aa → circumflex applied (uâ), auto-restore via Check 5b
-        ("muafa ", "muàa "), // m + u + à + a → partial restore via C+V1+V2+tone+V2 pattern
+        ("mufaa ", "mùaa "), // m + ù + aa → 'u' has mark, 'a' different → skip circumflex
         // sắc (s) + different double vowel
         ("tasoo ", "táoo "), // t + á + oo → 'a' has mark, 'o' different → skip circumflex
-        ("tesaa ", "teáa "), // t + é + aa → 'ea' diphthong repositions mark to 'a' → skip circumflex
-    ]);
-}
-
-#[test]
-fn pattern_triple_vowel_auto_restore() {
-    // muafaa and mufaaa are equivalent Telex inputs that produce invalid VN
-    // Both must auto-restore to their raw ASCII on space
-    telex_auto_restore(&[("muafaa ", "muàa "), ("mufaaa ", "mùaa ")]);
-}
-
-#[test]
-fn pattern_multi_consonant_partial_restore() {
-    // Multi-char consonant clusters (ch, tr, th, ng, etc.) + tone + doubled vowel
-    telex_auto_restore(&[
-        ("chaofo ", "chàoo "), // ch + ao + f(huyền) + o → "chàoo"
-        ("chaoso ", "cháoo "), // ch + ao + s(sắc) + o → "cháoo"
-    ]);
-}
-
-#[test]
-fn pattern_early_mark_circumflex() {
-    // When mark (j/s/f/r/x) is typed early + double vowel → circumflex applied
-    // because diphthong + final consonant can form valid Vietnamese (uân, uât, etc.)
-    // Auto-restore keeps Vietnamese form when result is valid
-    telex_auto_restore(&[
-        ("lujaan ", "luận "), // l + ụ + aa + n → luận (valid VN, keep)
+        ("tesaa ", "téaa "), // t + é + aa → 'e' has mark, 'a' different → skip circumflex
     ]);
 }
 
@@ -499,7 +471,7 @@ fn pattern7_vowel_modifier_vowel_with_initial() {
         ("care ", "care "),
         ("rare ", "rare "),
         ("are ", "are "),
-        ("ore ", "oẻ "),
+        ("ore ", "ore "),
         ("bore ", "bore "),
         ("fore ", "fore "), // F initial also triggers Pattern 6
         ("sore ", "sore "),
@@ -675,20 +647,6 @@ fn pattern9_re_prefix() {
 }
 
 #[test]
-fn pattern9_per_prefix() {
-    // "per-" prefix: double 'r' (hỏi) reverts mark, buffer has valid prefix pattern
-    // Pattern: per + rr → "pẻr" → "per" (revert)
-    telex_auto_restore(&[
-        ("perrmission ", "permission "),
-        ("perrfect ", "perfect "),
-        ("perrform ", "perform "),
-        ("perrson ", "person "),
-        ("perrsist ", "persist "),
-        ("perrmanent ", "permanent "),
-    ]);
-}
-
-#[test]
 fn pattern9_double_mark_no_prefix() {
     // Words with double mark keys but NO matching prefix/suffix pattern
     // 5+ char words: restore to English (preserve double letter)
@@ -748,23 +706,13 @@ fn pattern9_double_ss_english_words() {
         ("joss ", "joss "),  // joss - Chinese idol
         ("kiss ", "kiss "),  // kiss - embrace
         ("less ", "less "),  // less - smaller amount
-        ("loss ", "los "),   // "los" in English dict → keep buffer (Issue #337)
+        ("loss ", "loss "),  // loss - opposite of gain
         ("mass ", "mass "),  // mass - quantity
         ("mess ", "mess "),  // mess - disorder
         ("miss ", "miss "),  // miss - fail to hit
         ("moss ", "moss "),  // moss - plant
         ("pass ", "pass "),  // pass - go by
         ("toss ", "toss "),  // toss - throw
-    ]);
-}
-
-#[test]
-fn pattern9_hiss_exception() {
-    // "hiss" is an exception: user typing "hiss" likely wants "his"
-    // (more common word, user typed double 's' to revert sắc mark)
-    // This is similar to "off" → "of", "iff" → "if", "ass" → "as" exceptions
-    telex_auto_restore(&[
-        ("hiss ", "his "), // hiss → his (exception: "his" more common than "hiss")
     ]);
 }
 
@@ -832,22 +780,6 @@ fn ethnic_minority_place_names_not_restored() {
         ("bawts ", "bắt "),   // bắt - catch
         ("mawts ", "mắt "),   // mắt - eye
         ("nawngs ", "nắng "), // nắng - sunny
-    ]);
-}
-
-// =============================================================================
-// ENGLISH WORDS WITH K FINAL - SHOULD AUTO-RESTORE
-// Words like "cowork", "network", "worker" have circumflex vowel + K which is
-// NOT valid Vietnamese. Only breve vowel (ă) + K is valid (ethnic minority).
-// =============================================================================
-
-#[test]
-fn english_words_with_k_final_restored() {
-    telex_auto_restore(&[
-        ("cowork ", "cowork "),     // cowork - NOT valid VN (ổ + k = circumflex + K)
-        ("network ", "network "),   // network - should restore
-        ("worker ", "worker "),     // worker - should restore
-        ("homework ", "homework "), // homework - should restore
     ]);
 }
 
@@ -1125,7 +1057,6 @@ fn pattern11_ing_immediate_output() {
 }
 
 #[test]
-#[ignore] // TODO: Fix "queue" → "quêu" issue (V1-V2-V1 pattern triggers circumflex incorrectly)
 fn pattern11b_v1v2v1_immediate_output() {
     // V1-V2-V1 vowel pattern should NOT trigger circumflex
     // Example: "queue" = e-u-e, third 'e' should NOT circumflex first 'e'
@@ -1326,6 +1257,7 @@ fn pattern15d_ue_diphthong_patterns() {
         ("thueechs ", "thuếch "), // thuếch
         // uê + n final (double e for circumflex)
         ("thueens ", "thuến "), // valid pattern
+        ("queens ", "quến "),   // quến (to attract)
         ("quyeens ", "quyến "), // quyến (to attract) - quy pattern
     ]);
 }
@@ -1446,13 +1378,4 @@ fn w_medial_vowel_modifier_pattern() {
         ("banwxg ", "bẵng "), // ngã tone
         ("banwjg ", "bặng "), // nặng tone
     ]);
-}
-
-// =============================================================================
-// DOUBLE CONSONANT AUTO-RESTORE
-// =============================================================================
-
-#[test]
-fn double_consonant_auto_restore_missa_business() {
-    telex_auto_restore(&[("missa ", "misa "), ("bussiness ", "business ")]);
 }

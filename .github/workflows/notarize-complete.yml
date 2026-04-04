@@ -21,7 +21,7 @@ env:
 
 jobs:
   complete-notarization:
-    runs-on: macos-26
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -93,7 +93,7 @@ jobs:
           # Create output directory (script writes to platforms/macos/build/)
           mkdir -p platforms/macos/build
 
-          ./scripts/release/dmg.sh "GoNhanh.app"
+          ./scripts/create-dmg.sh "GoNhanh.app"
           ls -la platforms/macos/build/*.dmg
 
       - name: Update Release Asset

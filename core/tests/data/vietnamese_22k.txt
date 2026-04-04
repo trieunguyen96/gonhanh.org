@@ -3939,7 +3939,7 @@ chõng
 chóng
 chóng mặt
 chóng vánh
-choòng
+chòong
 chóp
 chóp bu
 chóp chép
@@ -8449,7 +8449,7 @@ gọn lỏn
 gọn mắt
 gọng
 gọng kìm
-goòng
+gòong
 góp
 góp chuyện
 góp mặt
@@ -8900,7 +8900,7 @@ háy
 hắc
 hắc ám
 hắc bạch
-hắc búa
+hắc buá
 hắc ín
 hắc lào
 hắc vận
@@ -9128,7 +9128,7 @@ hết thời
 hết trọi
 hết trơn
 hết trụi
-hết vía
+hết viá
 hết ý
 hệt
 hếu
@@ -9317,8 +9317,8 @@ hình thể
 hình thế
 hình thù
 hình thức
-hình thức chủ nghĩa
-hình thức chủ nghĩa
+hình thức chủ nghiã
+hình thức chủ nghiã
 hình thức hoá
 hình thức hoá
 hình trạng
@@ -11336,7 +11336,7 @@ kịch chiến
 kịch cỡm
 kịch hoá
 kịch liệt
-kịch múa
+kịch muá
 kịch ngắn
 kịch nói
 kịch phát
@@ -14256,7 +14256,7 @@ ngư long
 ngư lôi
 ngư ông
 ngư phủ
-ngư tiều
+ngư tiêù
 ngư trường
 ngữ
 ngữ âm

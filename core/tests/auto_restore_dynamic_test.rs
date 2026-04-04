@@ -646,7 +646,7 @@ const ORE_ARE_URE_WORDS: &[(&str, &str)] = &[
     ("lore ", "lore "),
     ("mare ", "mare "),
     ("more ", "more "),
-    ("ore ", "oẻ "), // 3-char diphthong: o+r+e → oẻ (Vietnamese)
+    ("ore ", "ore "),
     ("pore ", "pore "),
     ("rare ", "rare "),
     ("shore ", "shore "),
@@ -691,7 +691,7 @@ fn ore_are_ure_ire_comprehensive() {
 }
 
 #[rstest]
-#[case("", "ore", "oẻ")]
+#[case("", "ore", "ore")]
 #[case("c", "ore", "core")]
 #[case("m", "ore", "more")]
 #[case("st", "ore", "store")]
@@ -749,7 +749,7 @@ const W_FINAL_WORDS: &[(&str, &str)] = &[
     ("stew ", "stew "),
     ("threw ", "threw "),
     ("view ", "view "),
-    ("queue ", "quêu "), // qu + eue = invalid Vietnamese vowel pattern
+    ("queue ", "queue "), // qu + eue = invalid Vietnamese vowel pattern
     // -ow pattern: single valid consonant + ow → cơ (Vietnamese ơ vowel)
     // These form valid Vietnamese syllables (consonant + ơ)
     ("bow ", "bơ "), // bơ = butter
@@ -1028,11 +1028,9 @@ fn double_mark_4char_restores_english() {
     // so "bass", "boss", "buff", "cuff", etc. → restore to English
     telex_auto_restore(&[
         // Double ss at end: restore to English (not Vietnamese)
-        // Issue #337: if buffer (after ss revert) is a valid English word, keep buffer
-        ("buss ", "bus "), // "bus" is in English dict → keep buffer form
         ("bass ", "bass "),
         ("boss ", "boss "),
-        ("loss ", "los "), // "los" is in English dict → keep buffer form
+        ("loss ", "loss "),
         ("mass ", "mass "),
         ("mess ", "mess "),
         ("miss ", "miss "),

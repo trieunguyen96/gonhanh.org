@@ -16,7 +16,7 @@ env:
 
 jobs:
   build-macos:
-    runs-on: macos-26
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -231,7 +231,7 @@ jobs:
         run: |
           cd platforms/macos
           APP="build/Build/Products/Release/GoNhanh.app"
-          ../../scripts/release/dmg.sh "$APP"
+          ../../scripts/create-dmg.sh "$APP"
 
       - name: Get Tag Message
         id: tag_message
@@ -249,43 +249,11 @@ jobs:
             echo "EOF"
           } >> $GITHUB_OUTPUT
 
-      - name: Resolve PR Authors in Tag Message
-        if: ${{ steps.tag_message.outputs.message != '' }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_MSG: ${{ steps.tag_message.outputs.message }}
-        shell: bash
-        run: |
-          REPO="${{ github.repository }}"
-
-          # Process tag message: append "bởi @username" to lines with #NNN
-          # Matches (#NNN), (Issue #NNN), or bare #NNN anywhere in line
-          # Note: query PR author inline (no associative arrays - bash 3.x compat)
-          while IFS= read -r line; do
-            login=""
-            # Extract all #NNN refs from line, try each as PR (last match = PR ref typically)
-            refs=$(echo "$line" | grep -oE '#[0-9]+' | grep -oE '[0-9]+' || true)
-            if [ -n "$refs" ]; then
-              # Try refs in reverse order (PR ref is usually last, e.g., "(Issue #275) (#285)")
-              for pr_num in $(echo "$refs" | tail -r 2>/dev/null || echo "$refs" | tac 2>/dev/null || echo "$refs"); do
-                login=$(gh api "repos/$REPO/pulls/$pr_num" --jq '.user.login' 2>/dev/null) || login=""
-                if [ -n "$login" ]; then break; fi
-              done
-            fi
-            if [ -n "$login" ] && [[ "$line" != *"bởi @"* ]] && [[ "$line" != *"by @"* ]]; then
-              line="$line bởi @$login"
-            fi
-            echo "$line" >> release_body.md
-          done <<< "$TAG_MSG"
-
-          cat release_body.md
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            platforms/macos/build/*.dmg
-          body_path: ${{ steps.tag_message.outputs.message != '' && 'release_body.md' || '' }}
+          files: platforms/macos/build/*.dmg
+          body: ${{ steps.tag_message.outputs.message }}
           generate_release_notes: ${{ steps.tag_message.outputs.message == '' }}
 
       # ============================================================
@@ -306,7 +274,7 @@ jobs:
   staple-notarization:
     needs: build-macos
     if: ${{ needs.build-macos.outputs.submission_id != '' && needs.build-macos.outputs.stapled == 'false' }}
-    runs-on: macos-26
+    runs-on: macos-latest
     continue-on-error: true  # Don't fail the whole workflow if stapling fails
     steps:
       - uses: actions/checkout@v4
@@ -366,7 +334,7 @@ jobs:
         if: ${{ env.stapled == 'true' }}
         run: |
           mkdir -p platforms/macos/build
-          ./scripts/release/dmg.sh "GoNhanh.app"
+          ./scripts/create-dmg.sh "GoNhanh.app"
 
       - name: Update Release with Stapled DMG
         if: ${{ env.stapled == 'true' }}
@@ -529,40 +497,42 @@ jobs:
           git push
 
   build-windows:
+    if: false  # Temporarily disabled
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
-
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: core
 
-      - name: Configure CMake
-        run: |
-          cd platforms/windows
-          cmake -B build -G "Visual Studio 17 2022" -A x64
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
 
-      - name: Build
+      - name: Build Rust Core
         run: |
-          cd platforms/windows
-          cmake --build build --config Release
+          cd core
+          cargo build --release --target x86_64-pc-windows-msvc
+          Copy-Item "target/x86_64-pc-windows-msvc/release/gonhanh_core.dll" `
+                    "../platforms/windows/GoNhanh/Native/gonhanh_core.dll"
+
+      - name: Build WPF App
+        run: |
+          cd platforms/windows/GoNhanh
+          dotnet publish -c Release -r win-x64 --self-contained false -o ../publish
 
       - name: Package
         run: |
           cd platforms/windows
           $V = "${{ github.ref_name }}".TrimStart('v')
-          New-Item -ItemType Directory -Path publish -Force | Out-Null
-          Copy-Item "build/Release/gonhanh.exe" "publish/GoNhanh.exe"
-          Compress-Archive -Path "publish/GoNhanh.exe" -DestinationPath "GoNhanh-$V-win-x64.zip"
+          Compress-Archive -Path publish/* -DestinationPath "GoNhanh-$V-win-x64.zip"
 
-      - name: Upload to Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          cd platforms/windows
-          $ZIP = Get-ChildItem -Filter "*.zip" | Select-Object -First 1
-          gh release upload "${{ github.ref_name }}" $ZIP.Name --clobber
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-zip
+          path: platforms/windows/*.zip
