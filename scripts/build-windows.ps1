@@ -131,7 +131,7 @@ $buildType = if ($Debug) { "Debug" } else { "Release" }
 cmake --build $LocalBuildDir --config $buildType
 if ($LASTEXITCODE -ne 0) { throw "CMake build failed" }
 
-# Copy to publish folder
+# Copy to publish folder (kill running instance first to unlock file)
 $PublishDir = "$WindowsDir\publish"
 if (-not (Test-Path $PublishDir)) {
     New-Item -ItemType Directory -Path $PublishDir -Force | Out-Null
@@ -139,6 +139,12 @@ if (-not (Test-Path $PublishDir)) {
 
 $ExeSource = "$LocalBuildDir\$buildType\gonhanh.exe"
 if (Test-Path $ExeSource) {
+    # Kill running GoNhanh before overwriting
+    $procs = Get-Process -Name "gonhanh","GoNhanh" -ErrorAction SilentlyContinue
+    if ($procs) {
+        $procs | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 500
+    }
     Copy-Item $ExeSource "$PublishDir\GoNhanh.exe" -Force
 }
 

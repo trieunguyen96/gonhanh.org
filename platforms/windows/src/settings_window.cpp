@@ -199,26 +199,23 @@ void SettingsWindow::CreateControls() {
     toggleWShortcut = createToggleRow(L"G\x00F5 W th\x00E0nh \x01AF", IDC_CHK_W_SHORTCUT, contentX, contentWidth);
     toggleBracket = createToggleRow(L"G\x00F5 ] th\x00E0nh \x01AF, [ th\x00E0nh \x01A0", IDC_CHK_BRACKET, contentX, contentWidth);
     toggleAutoRestore = createToggleRow(L"T\x1EF1 kh\x00F4i ph\x1EE5" L"c ti\x1EBFng Anh", IDC_CHK_AUTORESTORE, contentX, contentWidth);
-    int section1Height = y - section1Y;
-    y += Scale(12, dpi);
+    int sectionGap = Scale(6, dpi);
+    y += sectionGap;
 
     // === Section 2: Shortcuts (2 rows - custom painted in PaintContent) ===
     int section2Y = y;
     // Store Y position for PaintContent to use
     section2Y_ = y;
-    // Reserve space for 2 custom rows (each with subtitle)
-    y += (rowHeight + Scale(4, dpi)) * 2;  // Two rows
-    y += Scale(12, dpi);  // Gap
+    // Reserve space for 2 custom rows (same height as toggle rows)
+    y += rowHeight * 2;
+    y += sectionGap;
 
     // === Section 3: Typing Rules (2 rows - match macOS) ===
-    int section3Y = y;
     toggleModern = createToggleRow(L"\x0110\x1EB7t d\x1EA5u ki\x1EC3u m\x1EDBi", IDC_CHK_MODERN, contentX, contentWidth);
     toggleForeignConsonants = createToggleRow(L"Cho ph\x00E9p ph\x1EE5 \x00E2m ngo\x1EA1i", IDC_CHK_FOREIGN, contentX, contentWidth);
-    int section3Height = y - section3Y;
-    y += Scale(12, dpi);
+    y += sectionGap;
 
     // === Section 4: Advanced (4 rows - match macOS) ===
-    int section4Y = y;
     toggleCapitalize = createToggleRow(L"T\x1EF1 vi\x1EBFt hoa \x0111\x1EA7u c\x00E2u", IDC_CHK_CAPITALIZE, contentX, contentWidth);
     togglePerApp = createToggleRow(L"Nh\x1EDB tr\x1EA1ng th\x00E1i theo app", IDC_CHK_PERAPP, contentX, contentWidth);
     toggleSound = createToggleRow(L"\x00C2m thanh khi b\x1EADt/t\x1EAFt", IDC_CHK_SOUND, contentX, contentWidth);
@@ -481,7 +478,7 @@ void SettingsWindow::PaintContent(HDC hdc) {
     DrawKeycap(hdc, keycapX + Scale(32, dpi), keycapY, L"Space", 10, dpi);
 
     // Move to next row
-    y += rowHeight + Scale(4, dpi);
+    y += rowHeight;
 
     // Divider
     DrawDivider(hdc, labelX, y - Scale(2, dpi), contentWidth - sectionPadding * 2, theme.textSecondary);
@@ -513,11 +510,11 @@ void SettingsWindow::PaintContent(HDC hdc) {
     const_cast<SettingsWindow*>(this)->shortcutsRowRect_ = {
         labelX, rowY,
         contentX + contentWidth - sectionPadding,
-        rowY + rowHeight + Scale(4, dpi)
+        rowY + rowHeight
     };
 
     // Divider after row
-    y += rowHeight + Scale(4, dpi);
+    y += rowHeight;
     DrawDivider(hdc, labelX, y - Scale(2, dpi), contentWidth - sectionPadding * 2, theme.textSecondary);
 }
 
