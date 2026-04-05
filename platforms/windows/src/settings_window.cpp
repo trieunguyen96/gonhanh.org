@@ -205,7 +205,7 @@ void SettingsWindow::CreateControls() {
     y += Scale(2, dpi);  // Thin divider space
 
     // === Section 2: Shortcuts (2 rows with subtitle - taller than toggle rows) ===
-    int subtitleRowHeight = Scale(44, dpi);
+    int subtitleRowHeight = Scale(50, dpi);
     section2Y_ = y;
     y += subtitleRowHeight * 2;
 
@@ -458,7 +458,7 @@ void SettingsWindow::PaintContent(HDC hdc) {
 
     int sidebarWidth = Scale(BASE_SIDEBAR_WIDTH, dpi);
     int contentPadding = Scale(20, dpi);
-    int rowHeight = Scale(44, dpi);  // Subtitle rows are taller
+    int rowHeight = Scale(50, dpi);  // Subtitle rows: title + subtitle + padding
     int sectionPadding = Scale(16, dpi);
 
     int contentX = sidebarWidth + contentPadding;
