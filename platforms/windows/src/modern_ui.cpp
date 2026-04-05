@@ -325,6 +325,79 @@ void DrawCheckmarkCircle(HDC hdc, int x, int y, int size, COLORREF color) {
     g.DrawLine(&pen, cx - s * 0.3f, cy + s * 0.7f, cx + s, cy - s * 0.5f);
 }
 
+// Heart icon (for "Ủng hộ" / Sponsor)
+void DrawHeartIcon(HDC hdc, int x, int y, int size, COLORREF color) {
+    Gdiplus::Graphics g(hdc);
+    g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    Gdiplus::SolidBrush brush(Gdiplus::Color(GetRValue(color), GetGValue(color), GetBValue(color)));
+
+    float s = (float)size;
+    float ox = (float)x;
+    float oy = (float)y + s * 0.15f;
+    float w = s * 0.5f;
+    float h = s * 0.7f;
+
+    Gdiplus::GraphicsPath path;
+    // Left bump
+    path.AddArc(ox, oy, w, w * 0.9f, 180, 180);
+    // Right bump
+    path.AddArc(ox + w, oy, w, w * 0.9f, 180, 180);
+    // Bottom point
+    path.AddLine(ox + s, oy + w * 0.45f, ox + s * 0.5f, oy + h);
+    path.AddLine(ox + s * 0.5f, oy + h, ox, oy + w * 0.45f);
+    path.CloseFigure();
+
+    g.FillPath(&brush, &path);
+}
+
+// Bug icon (for "Báo lỗi" / Report bug)
+void DrawBugIcon(HDC hdc, int x, int y, int size, COLORREF color) {
+    Gdiplus::Graphics g(hdc);
+    g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    Gdiplus::Pen pen(Gdiplus::Color(GetRValue(color), GetGValue(color), GetBValue(color)), 1.5f);
+    pen.SetLineCap(Gdiplus::LineCapRound, Gdiplus::LineCapRound, Gdiplus::DashCapRound);
+
+    float cx = x + size / 2.0f;
+    float cy = y + size / 2.0f;
+    float r = size * 0.3f;
+
+    // Body (oval)
+    g.DrawEllipse(&pen, cx - r, cy - r * 0.6f, r * 2, r * 2.2f);
+    // Head
+    g.DrawEllipse(&pen, cx - r * 0.6f, cy - r * 1.3f, r * 1.2f, r * 0.9f);
+    // Legs (3 pairs)
+    float legLen = r * 0.7f;
+    for (int i = 0; i < 3; i++) {
+        float ly = cy - r * 0.2f + i * r * 0.7f;
+        g.DrawLine(&pen, cx - r, ly, cx - r - legLen, ly - legLen * 0.3f);
+        g.DrawLine(&pen, cx + r, ly, cx + r + legLen, ly - legLen * 0.3f);
+    }
+}
+
+// Code bracket icon (for GitHub: </>)
+void DrawCodeIcon(HDC hdc, int x, int y, int size, COLORREF color) {
+    Gdiplus::Graphics g(hdc);
+    g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    Gdiplus::Pen pen(Gdiplus::Color(GetRValue(color), GetGValue(color), GetBValue(color)), 1.8f);
+    pen.SetLineCap(Gdiplus::LineCapRound, Gdiplus::LineCapRound, Gdiplus::DashCapRound);
+
+    float cx = x + size / 2.0f;
+    float cy = y + size / 2.0f;
+    float h = size * 0.35f;
+    float w = size * 0.25f;
+
+    // Left bracket <
+    g.DrawLine(&pen, cx - w * 0.3f, cy - h, cx - w * 1.3f, cy);
+    g.DrawLine(&pen, cx - w * 1.3f, cy, cx - w * 0.3f, cy + h);
+
+    // Right bracket >
+    g.DrawLine(&pen, cx + w * 0.3f, cy - h, cx + w * 1.3f, cy);
+    g.DrawLine(&pen, cx + w * 1.3f, cy, cx + w * 0.3f, cy + h);
+
+    // Slash /
+    g.DrawLine(&pen, cx + w * 0.15f, cy - h * 0.7f, cx - w * 0.15f, cy + h * 0.7f);
+}
+
 // Draw keycap style button (like macOS keyboard shortcuts)
 void DrawKeycap(HDC hdc, int x, int y, const wchar_t* text, int fontSize, float dpi) {
     const Theme& theme = GetTheme();

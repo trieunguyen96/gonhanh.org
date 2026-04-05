@@ -69,6 +69,9 @@ void DrawGearIcon(HDC hdc, int x, int y, int size, COLORREF color);
 void DrawBoltIcon(HDC hdc, int x, int y, int size, COLORREF color);
 void DrawChevronRight(HDC hdc, int x, int y, int size, COLORREF color);
 void DrawCheckmarkCircle(HDC hdc, int x, int y, int size, COLORREF color);
+void DrawHeartIcon(HDC hdc, int x, int y, int size, COLORREF color);
+void DrawBugIcon(HDC hdc, int x, int y, int size, COLORREF color);
+void DrawCodeIcon(HDC hdc, int x, int y, int size, COLORREF color);
 void DrawKeycap(HDC hdc, int x, int y, const wchar_t* text, int fontSize, float dpi);
 
 // Toggle switch control

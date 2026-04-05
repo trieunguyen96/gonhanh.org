@@ -605,13 +605,26 @@ void SettingsWindow::PaintAbout(HDC hdc) {
 
     COLORREF cardBg = IsDarkMode() ? RGB(50, 50, 50) : RGB(240, 240, 240);
     COLORREF cardBorder = IsDarkMode() ? RGB(70, 70, 70) : RGB(220, 220, 220);
+    int iconSize = Scale(18, dpi);
 
     for (int i = 0; i < 3; i++) {
         int bx = btnStartX + i * (btnWidth + btnGap);
         RECT btnRect = { bx, y, bx + btnWidth, y + btnHeight };
         DrawRoundedRect(hdc, btnRect, Scale(8, dpi), cardBg, cardBorder);
 
-        RECT labelRect = { bx, y + Scale(8, dpi), bx + btnWidth, y + btnHeight - Scale(4, dpi) };
+        // Icon centered above label
+        int iconX = bx + (btnWidth - iconSize) / 2;
+        int iconY = y + Scale(10, dpi);
+        COLORREF iconColor = (i == 0) ? RGB(236, 72, 153) : theme.textSecondary;  // Pink for heart
+
+        switch (i) {
+            case 0: DrawHeartIcon(hdc, iconX, iconY, iconSize, iconColor); break;
+            case 1: DrawBugIcon(hdc, iconX, iconY, iconSize, iconColor); break;
+            case 2: DrawCodeIcon(hdc, iconX, iconY, iconSize, iconColor); break;
+        }
+
+        // Label below icon
+        RECT labelRect = { bx, y + Scale(30, dpi), bx + btnWidth, y + btnHeight - Scale(4, dpi) };
         DrawText(hdc, btnLabels[i], labelRect, theme.textPrimary, 10, false, DT_CENTER | DT_VCENTER);
     }
 
