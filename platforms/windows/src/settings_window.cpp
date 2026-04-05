@@ -199,7 +199,7 @@ void SettingsWindow::CreateControls() {
     toggleWShortcut = createToggleRow(L"G\x00F5 W th\x00E0nh \x01AF", IDC_CHK_W_SHORTCUT, contentX, contentWidth);
     toggleBracket = createToggleRow(L"G\x00F5 ] th\x00E0nh \x01AF, [ th\x00E0nh \x01A0", IDC_CHK_BRACKET, contentX, contentWidth);
     toggleAutoRestore = createToggleRow(L"T\x1EF1 kh\x00F4i ph\x1EE5" L"c ti\x1EBFng Anh", IDC_CHK_AUTORESTORE, contentX, contentWidth);
-    int sectionGap = Scale(14, dpi);  // Clear visual separation between groups
+    int sectionGap = Scale(10, dpi);  // Visual separation between groups
     y += sectionGap;
 
     // === Section 2: Shortcuts (2 rows with subtitle - taller than toggle rows) ===
