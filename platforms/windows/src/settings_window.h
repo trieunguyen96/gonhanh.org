@@ -46,7 +46,9 @@ private:
     // Sidebar tab hit rects
     RECT tabSettingsRect_ = {};
     RECT tabAboutRect_ = {};
-    RECT aboutBtnRects_[3] = {};  // Ủng hộ, Báo lỗi, GitHub
+    RECT aboutBtnRects_[3] = {};   // Ủng hộ, Báo lỗi, GitHub
+    RECT authorLinkRect_ = {};     // "Kha Phan" link
+    RECT communityLinkRect_ = {};  // "Cộng đồng" link
 
     // Scrolling (content area only)
     int scrollPos_ = 0;

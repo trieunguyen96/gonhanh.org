@@ -663,10 +663,63 @@ void SettingsWindow::PaintAbout(HDC hdc) {
 
     y += btnHeight + Scale(40, dpi);
 
-    // Footer: "Phát triển bởi Kha Phan và Cộng đồng"
-    RECT footerRect = { contentLeft, y, contentRight, y + Scale(18, dpi) };
-    DrawText(hdc, L"Ph\x00E1t tri\x1EC3n b\x1EDFi Kha Phan v\x00E0 C\x1ED9ng \x0111\x1ED3ng",
-             footerRect, theme.textTertiary, 11, false, DT_CENTER | DT_VCENTER);
+    // Footer: "Phát triển bởi [Kha Phan] và [Cộng đồng]" with blue links
+    {
+        int footerFontSize = 11;
+        int footerH = Scale(18, dpi);
+
+        // Create normal and underline fonts
+        int fontPx = -MulDiv(footerFontSize, GetDeviceCaps(hdc, LOGPIXELSY), 72);
+        HFONT hNormal = CreateFontW(fontPx, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+            CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
+        HFONT hLink = CreateFontW(fontPx, 0, 0, 0, FW_NORMAL, FALSE, TRUE, FALSE,
+            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+            CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
+
+        // Measure each segment to center the whole line
+        struct Seg { const wchar_t* text; bool isLink; };
+        Seg segs[] = {
+            { L"Ph\x00E1t tri\x1EC3n b\x1EDFi ", false },
+            { L"Kha Phan", true },
+            { L" v\x00E0 ", false },
+            { L"C\x1ED9ng \x0111\x1ED3ng", true },
+        };
+
+        // Measure total width
+        int totalW = 0;
+        SIZE sz;
+        for (auto& seg : segs) {
+            SelectObject(hdc, seg.isLink ? hLink : hNormal);
+            GetTextExtentPoint32W(hdc, seg.text, (int)wcslen(seg.text), &sz);
+            totalW += sz.cx;
+        }
+
+        // Draw centered
+        int drawX = contentCenterX - totalW / 2;
+        int drawY = y;
+        SetBkMode(hdc, TRANSPARENT);
+        COLORREF linkColor = RGB(0, 102, 204);
+
+        for (auto& seg : segs) {
+            SelectObject(hdc, seg.isLink ? hLink : hNormal);
+            SetTextColor(hdc, seg.isLink ? linkColor : theme.textTertiary);
+            GetTextExtentPoint32W(hdc, seg.text, (int)wcslen(seg.text), &sz);
+            TextOutW(hdc, drawX, drawY, seg.text, (int)wcslen(seg.text));
+
+            // Store link rects for click handling
+            if (seg.isLink && seg.text[0] == 'K') {  // "Kha Phan"
+                authorLinkRect_ = { drawX, drawY, drawX + sz.cx, drawY + footerH };
+            } else if (seg.isLink) {  // "Cộng đồng"
+                communityLinkRect_ = { drawX, drawY, drawX + sz.cx, drawY + footerH };
+            }
+
+            drawX += sz.cx;
+        }
+
+        DeleteObject(hNormal);
+        DeleteObject(hLink);
+    }
     y += Scale(20, dpi);
 
     // Copyright
@@ -746,7 +799,7 @@ LRESULT CALLBACK SettingsWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
                     return 0;
                 }
 
-                // About tab: link button clicks
+                // About tab: link button + footer link clicks
                 if (currentTab == TAB_ABOUT) {
                     static const wchar_t* aboutUrls[] = {
                         L"https://github.com/sponsors/khaphanspace",
@@ -758,6 +811,15 @@ LRESULT CALLBACK SettingsWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
                             ShellExecuteW(NULL, L"open", aboutUrls[i], NULL, NULL, SW_SHOW);
                             return 0;
                         }
+                    }
+                    // Footer author/community links
+                    if (PtInRect(&window->authorLinkRect_, pt)) {
+                        ShellExecuteW(NULL, L"open", L"https://www.linkedin.com/in/khaphanspace", NULL, NULL, SW_SHOW);
+                        return 0;
+                    }
+                    if (PtInRect(&window->communityLinkRect_, pt)) {
+                        ShellExecuteW(NULL, L"open", L"https://github.com/khaphanspace/gonhanh.org/blob/main/CONTRIBUTORS.md", NULL, NULL, SW_SHOW);
+                        return 0;
                     }
                 }
 
@@ -778,13 +840,17 @@ LRESULT CALLBACK SettingsWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
                 bool isClickable = PtInRect(&window->shortcutsRowRect_, pt) ||
                     PtInRect(&window->tabSettingsRect_, pt) ||
                     PtInRect(&window->tabAboutRect_, pt);
-                // About tab buttons
+                // About tab buttons and footer links
                 if (currentTab == TAB_ABOUT) {
                     for (int i = 0; i < 3; i++) {
                         if (PtInRect(&window->aboutBtnRects_[i], pt)) {
                             isClickable = true;
                             break;
                         }
+                    }
+                    if (PtInRect(&window->authorLinkRect_, pt) ||
+                        PtInRect(&window->communityLinkRect_, pt)) {
+                        isClickable = true;
                     }
                 }
                 if (isClickable) {
