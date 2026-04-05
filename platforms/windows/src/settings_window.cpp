@@ -597,11 +597,10 @@ void SettingsWindow::PaintAbout(HDC hdc) {
     int totalBtnWidth = btnWidth * 3 + btnGap * 2;
     int btnStartX = contentCenterX - totalBtnWidth / 2;
 
-    struct LinkBtn { const wchar_t* label; COLORREF iconColor; };
-    LinkBtn buttons[] = {
-        { L"\x2764 \x1EE6ng h\x1ED9", RGB(236, 72, 153) },    // ❤ Ủng hộ (pink)
-        { L"\x1F41C B\x00E1o l\x1ED7i", theme.textSecondary },  // 🐜 Báo lỗi
-        { L"</> GitHub", theme.textSecondary },
+    const wchar_t* btnLabels[] = {
+        L"\x1EE6ng h\x1ED9",    // Ủng hộ
+        L"B\x00E1o l\x1ED7i",   // Báo lỗi
+        L"GitHub",
     };
 
     COLORREF cardBg = IsDarkMode() ? RGB(50, 50, 50) : RGB(240, 240, 240);
@@ -613,7 +612,7 @@ void SettingsWindow::PaintAbout(HDC hdc) {
         DrawRoundedRect(hdc, btnRect, Scale(8, dpi), cardBg, cardBorder);
 
         RECT labelRect = { bx, y + Scale(8, dpi), bx + btnWidth, y + btnHeight - Scale(4, dpi) };
-        DrawText(hdc, buttons[i].label, labelRect, theme.textPrimary, 10, false, DT_CENTER | DT_VCENTER);
+        DrawText(hdc, btnLabels[i], labelRect, theme.textPrimary, 10, false, DT_CENTER | DT_VCENTER);
     }
 
     // Store button rects for click handling
