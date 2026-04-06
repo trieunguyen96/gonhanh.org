@@ -63,6 +63,12 @@ Những người đã tin tưởng và ủng hộ dự án.
       </a>
     </td>
     <td align="center">
+      <a href="https://github.com/thehotbotcannotdiefromlove">
+        <img src="https://avatars.githubusercontent.com/u/19403100?u=760bd6b0152bdf6d7632d125dbb8a37cbb8ba8c6&v=4" width="80" style="border-radius:50%"/><br/>
+        <b>thehotbotcannotdiefromlove</b> 🥈
+      </a>
+    </td>
+    <td align="center">
       <a href="https://github.com/vienkmt">
         <img src="https://avatars.githubusercontent.com/u/20434534?u=12a0117494ef54992f329b8a943036622d5c0f17&v=4" width="80" style="border-radius:50%"/><br/>
         <b>vienkmt</b> 🥈
@@ -411,9 +417,9 @@ Những người đã báo lỗi, góp ý, và thảo luận giúp định hình
       </a>
     </td>
     <td align="center">
-      <a href="https://github.com/kwozyn">
+      <a href="https://github.com/thehotbotcannotdiefromlove">
         <img src="https://avatars.githubusercontent.com/u/19403100?v=4" width="50" style="border-radius:50%"/><br/>
-        <b>kwozyn</b>
+        <b>thehotbotcannotdiefromlove</b>
       </a>
     </td>
     <td align="center">
@@ -1033,6 +1039,6 @@ Những người đã báo lỗi, góp ý, và thảo luận giúp định hình
 
 ---
 
-*Được cập nhật tự động · Lần cuối: 05/04/2026*
+*Được cập nhật tự động · Lần cuối: 06/04/2026*
 
 </div>
