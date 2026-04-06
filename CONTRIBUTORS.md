@@ -239,19 +239,25 @@ Những người đã báo lỗi, góp ý, và thảo luận giúp định hình
       </a>
     </td>
     <td align="center">
+      <a href="https://github.com/hongmd">
+        <img src="https://avatars.githubusercontent.com/u/32331121?v=4" width="50" style="border-radius:50%"/><br/>
+        <b>hongmd</b>
+      </a>
+    </td>
+    <td align="center">
       <a href="https://github.com/lamngockhuong">
         <img src="https://avatars.githubusercontent.com/u/16838267?v=4" width="50" style="border-radius:50%"/><br/>
         <b>lamngockhuong</b>
       </a>
     </td>
+  </tr>
+  <tr>
     <td align="center">
       <a href="https://github.com/ntuvu">
         <img src="https://avatars.githubusercontent.com/u/107499074?v=4" width="50" style="border-radius:50%"/><br/>
         <b>ntuvu</b>
       </a>
     </td>
-  </tr>
-  <tr>
     <td align="center">
       <a href="https://github.com/vincent-south">
         <img src="https://avatars.githubusercontent.com/u/250263007?v=4" width="50" style="border-radius:50%"/><br/>
@@ -282,14 +288,14 @@ Những người đã báo lỗi, góp ý, và thảo luận giúp định hình
         <b>namkhanh20xx</b>
       </a>
     </td>
+  </tr>
+  <tr>
     <td align="center">
       <a href="https://github.com/vietnt02">
         <img src="https://avatars.githubusercontent.com/u/127472325?v=4" width="50" style="border-radius:50%"/><br/>
         <b>vietnt02</b>
       </a>
     </td>
-  </tr>
-  <tr>
     <td align="center">
       <a href="https://github.com/padit69">
         <img src="https://avatars.githubusercontent.com/u/117066905?v=4" width="50" style="border-radius:50%"/><br/>
@@ -300,12 +306,6 @@ Những người đã báo lỗi, góp ý, và thảo luận giúp định hình
       <a href="https://github.com/PhucHuwu">
         <img src="https://avatars.githubusercontent.com/u/142735617?v=4" width="50" style="border-radius:50%"/><br/>
         <b>PhucHuwu</b>
-      </a>
-    </td>
-    <td align="center">
-      <a href="https://github.com/hongmd">
-        <img src="https://avatars.githubusercontent.com/u/32331121?v=4" width="50" style="border-radius:50%"/><br/>
-        <b>hongmd</b>
       </a>
     </td>
     <td align="center">
