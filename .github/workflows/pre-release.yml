@@ -11,6 +11,7 @@ on:
         type: choice
         options:
           - macos
+          - windows
           - linux
           - all
       sign:
@@ -289,4 +290,66 @@ jobs:
         with:
           name: GoNhanh-${{ steps.version.outputs.version }}-Linux
           path: platforms/linux/*.tar.gz
+          retention-days: 14
+
+  build-windows:
+    # Manual trigger only (no auto PR build for Windows)
+    if: ${{ github.event_name == 'workflow_dispatch' && (inputs.platform == 'windows' || inputs.platform == 'all') }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build Rust Core
+        run: |
+          cd core
+          cargo build --release --target x86_64-pc-windows-msvc
+          New-Item -ItemType Directory -Force -Path "../platforms/windows/GoNhanh/Native"
+          Copy-Item "target/x86_64-pc-windows-msvc/release/gonhanh_core.dll" `
+                    "../platforms/windows/GoNhanh/Native/gonhanh_core.dll"
+
+      - name: Build WPF App
+        run: |
+          cd platforms/windows/GoNhanh
+          dotnet publish -c Release -r win-x64 --self-contained false -p:PublishReadyToRun=false -o ../publish
+
+      - name: Get version from latest release tag
+        id: version
+        shell: bash
+        run: |
+          git fetch --tags
+          LATEST_TAG=$(git tag --sort=-v:refname | grep -v '-' | head -1)
+          LATEST_TAG="${LATEST_TAG:-v1.0.0}"
+          BASE_VERSION="${LATEST_TAG#v}"
+          MAJOR=$(echo "$BASE_VERSION" | cut -d. -f1)
+          MINOR=$(echo "$BASE_VERSION" | cut -d. -f2)
+          PATCH=$(echo "$BASE_VERSION" | cut -d. -f3)
+          NEXT_PATCH=$((PATCH + 1))
+          BUILD_NUM="${GITHUB_RUN_NUMBER}"
+          DISPLAY_VERSION="${MAJOR}.${MINOR}.${NEXT_PATCH}-pre.${BUILD_NUM}"
+          echo "version=$DISPLAY_VERSION" >> $GITHUB_OUTPUT
+          echo "Pre-release: $DISPLAY_VERSION (base: $LATEST_TAG)"
+
+      - name: Package
+        shell: pwsh
+        run: |
+          cd platforms/windows
+          $V = "${{ steps.version.outputs.version }}"
+          Compress-Archive -Path publish/* -DestinationPath "GoNhanh-$V-win-x64.zip"
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GoNhanh-${{ steps.version.outputs.version }}-Windows
+          path: platforms/windows/*.zip
           retention-days: 14
